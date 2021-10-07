@@ -1,0 +1,14 @@
+name: pinns-experiments
+channels:
+  - conda-forge
+dependencies:
+  - deepxde
+  - python>=3.7
+  - pip>=19.1,<20.3
+  - pip:
+    - -r file:requirements.txt
+    # development
+    - -r file:dev_requirements.txt
+    # experiments
+    - jupyter
+    - -e .
