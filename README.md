@@ -1,7 +1,5 @@
 # pinns-experiments
 
-**DISCLAIMER: the code and files in the repository should be considered IBM Confidential unless otherwise stated.**
-
 Experiments with PINNs.
 
 ## setup
