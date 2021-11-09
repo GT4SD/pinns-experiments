@@ -2,12 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
 __all__ = ["Model", "TrainState", "LossHistory"]
 
 
 import pickle
 from collections import OrderedDict
 
+import os
 import numpy as np
 
 import deepxde as dde
@@ -21,7 +23,7 @@ from deepxde import utils
 from deepxde.backend import backend_name, tf, torch
 from deepxde.callbacks import CallbackList
 
-from pinnse.custom_loss import WeightedLoss
+from pinnse.custom_loss import WeightedLoss, NormalizationLoss
 
 
 class Model(object):
@@ -652,10 +654,11 @@ class Model(object):
             print(v)
 
 
-class CustomLossModel(dde.Model):
+class CustomLossModel(dde.Model): # TODO: change name to sth more generic, this is our custom model now!
 
     def __init__(self, data, net):
         super().__init__(data, net)
+        self.prior_learned = False
     
     # same as parent apart from the defined loss
     @utils.timing
@@ -663,7 +666,7 @@ class CustomLossModel(dde.Model):
         self,
         optimizer,
         lr=None,
-        loss="WeightedLoss",
+        loss="WeightedLoss", # "NormalizationLoss" # Only addition is the additional losses!
         weight_condition=None, # new addition, only works if loss='WeightedLoss'
         metrics=None,
         decay=None,
@@ -704,6 +707,8 @@ class CustomLossModel(dde.Model):
         if loss == "WeightedLoss":
             assert weight_condition != None, "No weighting condition defined!"
             loss_fn = WeightedLoss(weight_condition)
+        elif loss == "NormalizationLoss":
+            loss_fn = NormalizationLoss()
         else:
             loss_fn = losses_module.get(loss)
         if external_trainable_variables is None:
@@ -742,6 +747,8 @@ class CustomLossModel(dde.Model):
         # Set individual weights for input data for "WeightedLoss"
         if self.loss == "WeightedLoss":
             loss_fn.set_weights(self.net.inputs)
+        elif self.loss == "NormalizationLoss":
+            loss_fn.set_domain(self.net.inputs)
 
         # Data losses
         losses = self.data.losses(self.net.targets, self.net.outputs, loss_fn, self)
@@ -887,6 +894,108 @@ class CustomLossModel(dde.Model):
         self.outputs = outputs
         self.outputs_losses = outputs_losses
         self.train_step = train_step
+
+    def learn_prior(self, prior_data, prior_save_path, **compile_train_args):
+        '''
+        prior_data: should have the same structure as self.data with PDE as only difference:
+        Define PDE as the prior you want to set!
+        '''
+        data = self.data
+        self.data = prior_data
+        self.prior_save_path = prior_save_path
+
+        optimizer, lr = compile_train_args['optimizer'], compile_train_args['lr']
+        epochs = compile_train_args['epochs']
+
+        print("Learning prior function...")
+        self.compile(optimizer, lr, loss='MSE')
+        self.train(epochs)
+        print("Prior function learned!")
+        self.prior_learned = True
+
+        self.train_state.step = 0
+        self.train_state.epoch = 0
+        self.save(prior_save_path)
+        self.data = data
+
+    @utils.timing
+    def train(
+        self,
+        epochs=None,
+        batch_size=None,
+        display_every=1000,
+        disregard_previous_best=False,
+        callbacks=None,
+        model_restore_path=None,
+        model_save_path=None,
+    ):
+        """Trains the model for a fixed number of epochs (iterations on a dataset).
+
+        Args:
+            epochs: Integer. Number of iterations to train the model. Note: It is the
+                number of iterations, not the number of epochs.
+            batch_size: Integer or ``None``. If you solve PDEs via ``dde.data.PDE`` or
+                ``dde.data.TimePDE``, do not use `batch_size`, and instead use
+                `dde.callbacks.PDEResidualResampler
+                <https://deepxde.readthedocs.io/en/latest/modules/deepxde.html#deepxde.callbacks.PDEResidualResampler>`_,
+                see an `example <https://github.com/lululxvi/deepxde/blob/master/examples/diffusion_1d_resample.py>`_.
+            display_every: Integer. Print the loss and metrics every this steps.
+            disregard_previous_best: If ``True``, disregard the previous saved best
+                model.
+            callbacks: List of ``dde.callbacks.Callback`` instances. List of callbacks
+                to apply during training.
+            model_restore_path: String. Path where parameters were previously saved.
+                See ``save_path`` in `tf.train.Saver.restore <https://www.tensorflow.org/api_docs/python/tf/compat/v1/train/Saver#restore>`_.
+            model_save_path: String. Prefix of filenames created for the checkpoint.
+                See ``save_path`` in `tf.train.Saver.save <https://www.tensorflow.org/api_docs/python/tf/compat/v1/train/Saver#save>`_.
+        """
+        self.batch_size = batch_size
+        self.callbacks = CallbackList(callbacks=callbacks)
+        self.callbacks.set_model(self)
+        if disregard_previous_best:
+            self.train_state.disregard_best()
+
+        if backend_name == "tensorflow.compat.v1":
+            if self.train_state.step == 0:
+                print("Initializing variables...")
+                self.sess.run(tf.global_variables_initializer())
+            else:
+                utils.guarantee_initialized_variables(self.sess)
+
+        ##############################
+        if self.prior_learned:
+            self.saver = tf.train.import_meta_graph(self.prior_save_path + '-0.meta') # saving after setting epoch back to 0!
+            pth = os.path.split(self.prior_save_path)[0]
+            self.saver.restore(self.sess,tf.train.latest_checkpoint(pth))
+        ##############################
+
+        if model_restore_path is not None:
+            self.restore(model_restore_path, verbose=1)
+
+        print("Training model...\n")
+        self.stop_training = False
+        self.train_state.set_data_train(*self.data.train_next_batch(self.batch_size))
+        self.train_state.set_data_test(*self.data.test())
+        self._test()
+        self.callbacks.on_train_begin()
+        if optimizers.is_external_optimizer(self.opt_name):
+            if backend_name == "tensorflow.compat.v1":
+                self._train_tensorflow_compat_v1_scipy(display_every)
+            elif backend_name == "tensorflow":
+                self._train_tensorflow_tfp()
+            elif backend_name == "pytorch":
+                self._train_pytorch_lbfgs()
+        else:
+            if epochs is None:
+                raise ValueError("No epochs for {}.".format(self.opt_name))
+            self._train_sgd(epochs, display_every)
+        self.callbacks.on_train_end()
+
+        print("")
+        display.training_display.summary(self.train_state)
+        if model_save_path is not None:
+            self.save(model_save_path, verbose=1)
+        return self.losshistory, self.train_state
 
 
 
