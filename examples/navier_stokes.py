@@ -164,7 +164,7 @@ class KovasznayFlow(SolverClass):
 # ---------------------------------------------------
 
 def main():
-    pinn_parameters = {"net_architecture":[2] + [32] * 3 + [3], "optimizer":"adam", "lr":[1e-3, 1e-4, 1e-5, 1e-6], "n_epochs":[5000, 5000, 50000, 50000]}
+    pinn_parameters = {"net_architecture":[2] + [300] * 10 + [3], "optimizer":"adam", "lr":[1e-3, 1e-4, 1e-5, 1e-6], "n_epochs":[5000, 5000, 50000, 50000]}
     solver = KovasznayFlow(pinn_parameters=pinn_parameters)
     solver.solve()
     solver.evaluate()
