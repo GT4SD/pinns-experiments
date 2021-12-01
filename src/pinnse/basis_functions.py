@@ -45,12 +45,15 @@ class LegendreBasis(object):
         self.backend = backend
 
     def _legendrePolynomial(self, input, n):
+
+        input = input / tf.reduce_max(input) # TODO: scaling step
+
         k = tf.range(n+1, dtype=input.dtype)
         n_tf = tf.constant(n, dtype=input.dtype)
         combination = tf.exp(tf.math.lgamma(n_tf+1)) / ( tf.exp(tf.math.lgamma(k+1)) * tf.exp(tf.math.lgamma(n_tf - k + 1)) )
         # factorial is computed using: n! = tf.exp( tf.math.lgamma( n+1 ) )
         elements = combination**2 * (input-1)**(n_tf-k) * (input+1)**(k)
-        polynomial = 1/(2**n) * tf.reduce_sum(elements)
+        polynomial = 1/(2**n) * tf.reduce_sum(elements, axis=1)
         return polynomial
 
     def compute(self, input):
@@ -59,6 +62,7 @@ class LegendreBasis(object):
             if self.dimension == 1:
                 for n in range(1, self.max_n):
                     function += self._legendrePolynomial(input, n)
+                function = tf.reshape(function, (-1,1))
                 return function
             elif self.dimension == 2:
                 # TODO: implement

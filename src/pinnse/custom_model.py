@@ -928,6 +928,7 @@ class CustomLossModel(dde.Model): # TODO: change name to sth more generic, this 
         callbacks=None,
         model_restore_path=None,
         model_save_path=None,
+        reduce_lr=None, # in order to manually reduce lr
     ):
         """Trains the model for a fixed number of epochs (iterations on a dataset).
 
@@ -996,7 +997,6 @@ class CustomLossModel(dde.Model): # TODO: change name to sth more generic, this 
         if model_save_path is not None:
             self.save(model_save_path, verbose=1)
         return self.losshistory, self.train_state
-
 
 
 class TrainState(object):
