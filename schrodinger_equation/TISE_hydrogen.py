@@ -126,7 +126,7 @@ def learn_R_nl(quantum_numbers, results_path):
     
     model = dde.Model(data, net)
     model.compile("adam", lr=1.0e-5)
-    model.train(epochs=20000)
+    #model.train(epochs=20000)
     return model
 
 def learn_f_lm(quantum_numbers, results_path):
@@ -147,7 +147,7 @@ def learn_f_lm(quantum_numbers, results_path):
     model = CustomLossModel(data, net)
     model.learn_prior(prior_data, prior_save_path, **compile_train_args)
     model.compile("adam", lr=1.0e-5, loss='MSE')
-    model.train(epochs=20000)
+    #model.train(epochs=20000)
     return model
 
 def learn_g_m(quantum_numbers, results_path):
@@ -161,7 +161,7 @@ def learn_g_m(quantum_numbers, results_path):
 
     model = dde.Model(data, net)
     model.compile("adam", lr=1.0e-5)
-    model.train(epochs=20000)
+    #model.train(epochs=20000)
     return model
 
 # ---------------------------------
@@ -320,12 +320,32 @@ def finalize(quantum_numbers = {'n':3, 'l':1, 'm':0}):
     number = str(n)+str(l)+str(m)
 
     model_g = learn_g_m(quantum_numbers, results_path) # results path in case of prior learning
+    checker = dde.callbacks.ModelCheckpoint(
+        model_save_path+"{number}/g_model/model.ckpt".format(number=number), save_better_only=True, period=1000
+    )
+    losshistory, train_state = model_g.train(epochs=30000, callbacks=[checker])
+    with open(model_save_path+"{number}/g_model/best_step.txt".format(number=number), "w") as text_file:
+        text_file.write(str(train_state.best_step))
+    #model_g.save(model_save_path+'{number}/g_model/model'.format(number=number))
+    tf.compat.v1.reset_default_graph()
     model_R = learn_R_nl(quantum_numbers, results_path)
+    checker = dde.callbacks.ModelCheckpoint(
+        model_save_path+"{number}/R_model/model.ckpt".format(number=number), save_better_only=True, period=1000
+    )
+    losshistory, train_state = model_R.train(epochs=30000, callbacks=[checker])
+    with open(model_save_path+"{number}/R_model/best_step.txt".format(number=number), "w") as text_file:
+        text_file.write(str(train_state.best_step))
+    #model_R.save(model_save_path+'{number}/R_model/model'.format(number=number))
+    tf.compat.v1.reset_default_graph()
     model_f = learn_f_lm(quantum_numbers, results_path)
-    # SAVE MODELS #
-    # model_g.save(model_save_path+'{number}/g_model/model'.format(number=number))
-    # model_f.save(model_save_path+'{number}/f_model/model'.format(number=number))
-    # model_R.save(model_save_path+'{number}/R_model/model'.format(number=number))
+    checker = dde.callbacks.ModelCheckpoint(
+        model_save_path+"{number}/f_model/model.ckpt".format(number=number), save_better_only=True, period=1000
+    )
+    losshistory, train_state = model_f.train(epochs=30000, callbacks=[checker])
+    with open(model_save_path+"{number}/f_model/best_step.txt".format(number=number), "w") as text_file:
+        text_file.write(str(train_state.best_step))
+    #model_f.save(model_save_path+'{number}/f_model/model'.format(number=number))
+    tf.compat.v1.reset_default_graph()
     # NORMALIZATIONS #
     norm_n = 10000
     r_norm, theta_norm, phi_norm = np.linspace(0, 30, norm_n), np.linspace(0, pi, norm_n), np.linspace(0, 2.*pi, norm_n)
@@ -413,6 +433,9 @@ def finalize(quantum_numbers = {'n':3, 'l':1, 'm':0}):
     ax2.set_ylabel('z')
     fig.suptitle('{n},{l},{m} ORBITAL'.format(n=n, l=l, m=m))
     plt.savefig(results_path + "figures/" + '{n}{l}{m}.png'.format(n=n, l=l, m=m))
+
+    # Reset the current graph
+    tf.compat.v1.reset_default_graph()
 
 
 def finalize_loop():
@@ -610,15 +633,22 @@ class MotherSolverTISE():
     def solve(self):
         self._create_quantum_numbers_matrix()
         self.models = self._solver_setup(self.quantum_matrix)
-        save_names = ['R_model/model', 'f_model/model', 'g_model/model'] 
+        save_names = ['R_model/', 'f_model/', 'g_model/'] 
 
         ## SOLVE ##
         models_tmp = []
         for i, model in enumerate(self.models):
             model.compile("adam", lr= self.lr[i])
-            model.train(epochs= self.epochs[i])
-            model.save(self.save_path + save_names[i])
+            checker = dde.callbacks.ModelCheckpoint(
+                self.save_path+save_names[i]+"model.ckpt", save_better_only=True, period=1000
+            )
+            losshistory, train_state = model.train(epochs=self.epochs[i], callbacks=[checker])
+            with open(self.save_path+save_names[i]+"best_step.txt", "w") as text_file:
+                text_file.write(str(train_state.best_step))
+            #model.train(epochs= self.epochs[i])
+            #model.save(self.save_path + save_names[i])
             models_tmp.append(model)
+            tf.compat.v1.reset_default_graph()
         self.models = models_tmp
 
     def evaluate(self, load=False):
@@ -629,12 +659,16 @@ class MotherSolverTISE():
             self._create_quantum_numbers_matrix()
             self.models = self._solver_setup(self.quantum_matrix)
             models_tmp = []
-            save_names = ['R_model/model', 'f_model/model', 'g_model/model'] 
+            save_names = ['R_model/', 'f_model/', 'g_model/'] 
             for i,model in enumerate(self.models):
                 model.compile("adam", lr=self.lr[i], loss='MSE')
-                pth = os.path.split(self.save_path + save_names[i])[0]
-                model.saver.restore(model.sess,tf.train.latest_checkpoint(pth))
+                #pth = os.path.split(self.save_path + save_names[i])[0]
+                #model.saver.restore(model.sess,tf.train.latest_checkpoint(pth))
+                with open(self.save_path + save_names[i] + 'best_step.txt') as f:
+                    best = f.readlines()
+                model.restore(self.save_path + save_names[i] + "model.ckpt-" + best, verbose=1)
                 models_tmp.append(model)
+                tf.compat.v1.reset_default_graph()
             self.models = models_tmp
 
         model_R, model_f, model_g = self.models
@@ -708,17 +742,39 @@ class MotherSolverTISE():
 
 def main():
     configs = {
-        "n_max": 4,
+        "n_max": 2,
         "lr": [1e-5, 1e-3, 1e-3],
         "epochs": [20000, 20000, 20000],
         "save_path": "/Users/lat/Desktop/Code/pinns-experiments/schrodinger_equation/results_TISE_hydrogen/MotherModel/n2/"
     }
     solver = MotherSolverTISE(configs)
-    solver.solve()
-    solver.evaluate(load=False)
+    #solver.solve()
+    solver.evaluate(load=True)
+
+
+def test():
+    quantum_numbers = {"n":2, "l":1, "m":0}
+    results_path = '/Users/lat/Desktop/Code/pinns-experiments/schrodinger_equation/results_TISE_hydrogen/'
+    save_pth = "/Users/lat/Desktop/Code/pinns-experiments/schrodinger_equation/results_TISE_hydrogen/all_checkpoints/210/"
+    model_R = learn_R_nl(quantum_numbers, results_path)
+    with open(save_pth + 'R_model/best_step.txt') as f:
+                best = f.readlines()[0]
+    model_R.restore(save_pth+"R_model/model.ckpt-" + best, verbose=1)
+    #model_R.restore("/Users/lat/Desktop/Code/pinns-experiments/model/model.ckpt-" + str(9000), verbose=1)
+
+    r = np.linspace(0,30,1000)
+    gt, _, _ = TISE_hydrogen_exact(r,0,0,2,1,0)
+    pred = model_R.predict(r.reshape((-1,1)))
+    pred = pred.reshape(-1)
+    plt.figure(figsize=(12,8))
+    plt.plot(r, gt, "-k")
+    plt.plot(r, pred, ".r")
+    plt.show()
+
 
 
 if __name__ == '__main__':
-    main()
+    #main()
     #finalize({'n':4, 'l':2, 'm':0})
-    #finalize_loop()
+    finalize_loop()
+    #test()
