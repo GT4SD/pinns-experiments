@@ -448,7 +448,8 @@ def finalize_loop():
         (4,1,1), (4,2,0), (4,2,1)]
         # (2,1,0), (4,1,0)
         # (3,2,1) learned with prior learning
-    lyman_orbitals = [(1,0,0), (2,1,0), (3,1,0), (4,1,0), (5,1,0) ,(6,1,0)]
+    # lyman_orbitals = [(1,0,0), (2,1,0), (3,1,0), (4,1,0), (5,1,0) ,(6,1,0)]
+    lyman_orbitals = [(1,0,0), (4,1,0), (5,1,0) ,(6,1,0)] # TODO: don't touch (2,1,0) and (3,1,0)
     for orbital in lyman_orbitals:
         quantum_numbers = dict(zip(keys, orbital))
         finalize(quantum_numbers)
@@ -665,7 +666,7 @@ class MotherSolverTISE():
                 #pth = os.path.split(self.save_path + save_names[i])[0]
                 #model.saver.restore(model.sess,tf.train.latest_checkpoint(pth))
                 with open(self.save_path + save_names[i] + 'best_step.txt') as f:
-                    best = f.readlines()
+                    best = f.readlines()[0]
                 model.restore(self.save_path + save_names[i] + "model.ckpt-" + best, verbose=1)
                 models_tmp.append(model)
                 tf.compat.v1.reset_default_graph()
@@ -742,14 +743,15 @@ class MotherSolverTISE():
 
 def main():
     configs = {
-        "n_max": 2,
+        "n_max": 4,
         "lr": [1e-5, 1e-3, 1e-3],
         "epochs": [20000, 20000, 20000],
-        "save_path": "/Users/lat/Desktop/Code/pinns-experiments/schrodinger_equation/results_TISE_hydrogen/MotherModel/n2/"
+        #"save_path": "/Users/lat/Desktop/Code/pinns-experiments/schrodinger_equation/results_TISE_hydrogen/MotherModel/n2/"
+        "save_path": "./results_TISE_hydrogen/MotherModel/n4/"
     }
     solver = MotherSolverTISE(configs)
-    #solver.solve()
-    solver.evaluate(load=True)
+    solver.solve()
+    solver.evaluate(load=False)
 
 
 def test():
@@ -774,7 +776,7 @@ def test():
 
 
 if __name__ == '__main__':
-    #main()
+    main()
     #finalize({'n':4, 'l':2, 'm':0})
-    finalize_loop()
+    #finalize_loop()
     #test()
