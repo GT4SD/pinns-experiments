@@ -1,6 +1,7 @@
 from deepxde import backend
 import numpy as np
 import tensorflow as tf
+print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 import matplotlib.pyplot as plt
 import deepxde as dde
 from scipy.constants import h, epsilon_0, hbar, pi, e, electron_mass, physical_constants
@@ -229,7 +230,12 @@ def normalize_output(model):
 
 def main():
     results_path = '/Users/lat/Desktop/Code/pinns-experiments/schrodinger_equation/results_TISE_hydrogen_without_decomposition/'
-    quantum_numbers = {'n':2, 'l':1, 'm':0}
+    quantum_numbers = {'n':3, 'l':2, 'm':1}
+    folder = str(quantum_numbers["n"]) + str(quantum_numbers["l"]) + str(quantum_numbers["m"]) + '/'
+    results_path = results_path + folder
+    import os
+    if not os.path.exists(results_path):
+        os.makedirs(results_path)
 
     # ---------------------------------
     # geom = dde.geometry.Cuboid(xmin=[0,0,0], xmax=[30*a0, np.pi, 2*np.pi])
@@ -240,24 +246,28 @@ def main():
         return on_boundary and np.isclose(x[0], 30)
     def g_boundary_left(x, on_boundary):
         return on_boundary and np.isclose(x[2], 0)
-    def u_func(x): # TODO: generalize this boundary cond for arbitrary orbitals
+    def u_func(x):
         r, theta, phi = x[:,0:1], x[:,1:2], x[:,2:3]
         n, l, m = list(quantum_numbers.values())
         R, f, g = TISE_hydrogen_exact(r, theta, phi, n,l,m)
-        # factor = 1 / (4*np.sqrt(2*pi)*a0**(5/2))
-        # return factor * np.cos(x[:,1:2]) * x[:,0:1] * np.exp(-x[:,0:1] / (2*a0))
+        return R*f*g
+    def v_func(x):
+        r, theta, phi = x[:,0:1], x[:,1:2], x[:,2:3]
+        n, l, m = list(quantum_numbers.values())
+        R, f, g = TISE_hydrogen_exact(r, theta, phi, n,l,m)
+        g = np.sin(m*phi) / np.sqrt(2*pi)
         return R*f*g
     bc_cheating_u = dde.DirichletBC(geom, u_func, lambda _, on_boundary: on_boundary, component=0)
-    bc_cheating_v = dde.DirichletBC(geom, lambda x:0, lambda _, on_boundary: on_boundary, component=1)
+    bc_cheating_v = dde.DirichletBC(geom, v_func, lambda _, on_boundary: on_boundary, component=1)
     bc_u = dde.DirichletBC(geom, lambda x:0, boundary_right, component=0)
     bc_v = dde.DirichletBC(geom, lambda x:0, boundary_right, component=1)
     bc_g_u = PeriodicBC(geom, 2, g_boundary_left, periodicity="symmetric", component=0)
     bc_g_v = PeriodicBC(geom, 2, g_boundary_left, periodicity="symmetric", component=1)
-    #data = CustomPDE(geom, pde_polar, bcs=[bc_u, bc_v, bc_g_u, bc_g_v], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
+    data = CustomPDE(geom, pde_polar, bcs=[bc_u, bc_v, bc_g_u, bc_g_v], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
     # TODO: uncomment the following line for strict boundary conditions
-    data = CustomPDE(geom, pde_polar, bcs=[bc_cheating_u, bc_cheating_v, bc_u, bc_v, bc_g_u, bc_g_v], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
+    #data = CustomPDE(geom, pde_polar, bcs=[bc_cheating_u, bc_cheating_v, bc_u, bc_v, bc_g_u, bc_g_v], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
     # ---------------------------------
-    # geom = dde.geometry.Cuboid(xmin=[0,0,0], xmax=[20, 20, 20]) # TODO: setup for cartesian coordinates
+    # geom = dde.geometry.Cuboid(xmin=[-20,-20,-20], xmax=[20, 20, 20]) # TODO: setup for cartesian coordinates
     # def boundary_right_x(x, on_boundary):
     #     return on_boundary and np.isclose(x[0], 20)
     # def boundary_right_y(x, on_boundary):
@@ -289,7 +299,7 @@ def main():
     losshistory, train_state = model.train(50000, callbacks=[checker])
     with open(results_path+"model/best_step.txt", "w") as text_file:
         text_file.write(str(train_state.best_step))
-
+    ### ------------- ###
     model.compile("adam", lr=1.0e-5)
     with open(results_path+"model/best_step.txt") as f:
         best = f.readlines()[0]
@@ -297,11 +307,32 @@ def main():
     checker = dde.callbacks.ModelCheckpoint(
         results_path+"model/model.ckpt", save_better_only=True, period=1000
     )
-    losshistory, train_state = model.train(20000, callbacks=[checker])
+    losshistory, train_state = model.train(50000, callbacks=[checker])
+    with open(results_path+"model/best_step.txt", "w") as text_file:
+        text_file.write(str(train_state.best_step))
+    ### ------------- ###
+    model.compile("adam", lr=1.0e-6)
+    with open(results_path+"model/best_step.txt") as f:
+        best = f.readlines()[0]
+    model.restore(results_path + "model/model.ckpt-" + best, verbose=1)
+    checker = dde.callbacks.ModelCheckpoint(
+        results_path+"model/model.ckpt", save_better_only=True, period=1000
+    )
+    losshistory, train_state = model.train(5000, callbacks=[checker])
+    with open(results_path+"model/best_step.txt", "w") as text_file:
+        text_file.write(str(train_state.best_step))
+    ### ------------- ###
+    model.compile("adam", lr=1.0e-7)
+    with open(results_path+"model/best_step.txt") as f:
+        best = f.readlines()[0]
+    model.restore(results_path + "model/model.ckpt-" + best, verbose=1)
+    checker = dde.callbacks.ModelCheckpoint(
+        results_path+"model/model.ckpt", save_better_only=True, period=1000
+    )
+    losshistory, train_state = model.train(5000, callbacks=[checker])
     with open(results_path+"model/best_step.txt", "w") as text_file:
         text_file.write(str(train_state.best_step))
 
-    model.compile("adam", lr=1.0e-7)
     # ---------------------------------
     # model = CustomLossModel(data, net)
     # model.compile("adam", lr=1.0e-3, loss="NormalizationLoss")
