@@ -228,15 +228,7 @@ def normalize_output(model):
     return normalization_costant
 
 
-def main():
-    results_path = '/Users/lat/Desktop/Code/pinns-experiments/schrodinger_equation/results_TISE_hydrogen_without_decomposition/'
-    quantum_numbers = {'n':3, 'l':2, 'm':1}
-    folder = str(quantum_numbers["n"]) + str(quantum_numbers["l"]) + str(quantum_numbers["m"]) + '/'
-    results_path = results_path + folder
-    import os
-    if not os.path.exists(results_path):
-        os.makedirs(results_path)
-
+def create_model(quantum_numbers):
     # ---------------------------------
     # geom = dde.geometry.Cuboid(xmin=[0,0,0], xmax=[30*a0, np.pi, 2*np.pi])
     # def boundary_right(x, on_boundary):
@@ -263,9 +255,9 @@ def main():
     bc_v = dde.DirichletBC(geom, lambda x:0, boundary_right, component=1)
     bc_g_u = PeriodicBC(geom, 2, g_boundary_left, periodicity="symmetric", component=0)
     bc_g_v = PeriodicBC(geom, 2, g_boundary_left, periodicity="symmetric", component=1)
-    data = CustomPDE(geom, pde_polar, bcs=[bc_u, bc_v, bc_g_u, bc_g_v], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
+    #data = CustomPDE(geom, pde_polar, bcs=[bc_u, bc_v, bc_g_u, bc_g_v], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
     # TODO: uncomment the following line for strict boundary conditions
-    #data = CustomPDE(geom, pde_polar, bcs=[bc_cheating_u, bc_cheating_v, bc_u, bc_v, bc_g_u, bc_g_v], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
+    data = CustomPDE(geom, pde_polar, bcs=[bc_cheating_u, bc_cheating_v, bc_u, bc_v, bc_g_u, bc_g_v], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
     # ---------------------------------
     # geom = dde.geometry.Cuboid(xmin=[-20,-20,-20], xmax=[20, 20, 20]) # TODO: setup for cartesian coordinates
     # def boundary_right_x(x, on_boundary):
@@ -292,6 +284,77 @@ def main():
     # ---------------------------------
     # MAIN EXPERIMENTS: decreasing learning rate
     model = dde.Model(data, net)
+    return model
+
+
+def main():
+    #results_path = '/Users/lat/Desktop/Code/pinns-experiments/schrodinger_equation/results_TISE_hydrogen_without_decomposition/' # path in local
+    results_path = './results_TISE_hydrogen_without_decomposition/'
+    quantum_numbers = {'n':3, 'l':2, 'm':0}
+    folder = str(quantum_numbers["n"]) + str(quantum_numbers["l"]) + str(quantum_numbers["m"]) + '/'
+    results_path = results_path + folder
+    import os
+    if not os.path.exists(results_path):
+        os.makedirs(results_path)
+
+    # # ---------------------------------
+    # # geom = dde.geometry.Cuboid(xmin=[0,0,0], xmax=[30*a0, np.pi, 2*np.pi])
+    # # def boundary_right(x, on_boundary):
+    # #     return on_boundary and np.isclose(x[0], 30*a0, atol=a0*1e-08)
+    # geom = dde.geometry.Cuboid(xmin=[0,0,0], xmax=[30, np.pi, 2*np.pi])
+    # def boundary_right(x, on_boundary):
+    #     return on_boundary and np.isclose(x[0], 30)
+    # def g_boundary_left(x, on_boundary):
+    #     return on_boundary and np.isclose(x[2], 0)
+    # def u_func(x):
+    #     r, theta, phi = x[:,0:1], x[:,1:2], x[:,2:3]
+    #     n, l, m = list(quantum_numbers.values())
+    #     R, f, g = TISE_hydrogen_exact(r, theta, phi, n,l,m)
+    #     return R*f*g
+    # def v_func(x):
+    #     r, theta, phi = x[:,0:1], x[:,1:2], x[:,2:3]
+    #     n, l, m = list(quantum_numbers.values())
+    #     R, f, g = TISE_hydrogen_exact(r, theta, phi, n,l,m)
+    #     g = np.sin(m*phi) / np.sqrt(2*pi)
+    #     return R*f*g
+    # bc_cheating_u = dde.DirichletBC(geom, u_func, lambda _, on_boundary: on_boundary, component=0)
+    # bc_cheating_v = dde.DirichletBC(geom, v_func, lambda _, on_boundary: on_boundary, component=1)
+    # bc_u = dde.DirichletBC(geom, lambda x:0, boundary_right, component=0)
+    # bc_v = dde.DirichletBC(geom, lambda x:0, boundary_right, component=1)
+    # bc_g_u = PeriodicBC(geom, 2, g_boundary_left, periodicity="symmetric", component=0)
+    # bc_g_v = PeriodicBC(geom, 2, g_boundary_left, periodicity="symmetric", component=1)
+    # #data = CustomPDE(geom, pde_polar, bcs=[bc_u, bc_v, bc_g_u, bc_g_v], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
+    # # TODO: uncomment the following line for strict boundary conditions
+    # data = CustomPDE(geom, pde_polar, bcs=[bc_cheating_u, bc_cheating_v, bc_u, bc_v, bc_g_u, bc_g_v], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
+    # # ---------------------------------
+    # # geom = dde.geometry.Cuboid(xmin=[-20,-20,-20], xmax=[20, 20, 20]) # TODO: setup for cartesian coordinates
+    # # def boundary_right_x(x, on_boundary):
+    # #     return on_boundary and np.isclose(x[0], 20)
+    # # def boundary_right_y(x, on_boundary):
+    # #     return on_boundary and np.isclose(x[1], 20)
+    # # def boundary_right_z(x, on_boundary):
+    # #     return on_boundary and np.isclose(x[2], 20)
+    # # bc1 = dde.DirichletBC(geom, lambda x:0, boundary_right_x)
+    # # bc2 = dde.DirichletBC(geom, lambda x:0, boundary_right_y)
+    # # bc3 = dde.DirichletBC(geom, lambda x:0, boundary_right_z)
+    # # data = CustomPDE(geom, pde, bcs=[bc1, bc2, bc3], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
+    # # ---------------------------------
+
+    # #net = dde.maps.FNN([3] + [128] * 10 + [64] * 5 + [32] * 5 + [2], "tanh", "Glorot normal")
+    # net = dde.maps.FNN([3] + [32] * 3 + [2], "tanh", "Glorot normal")
+    # # backbone = [3] + [64]
+    # # neck = [list(np.ones(2, dtype=int)*32)] * 3 
+    # # head = [2]
+    # # net = dde.maps.PFNN(backbone + neck + head, "tanh", "Glorot normal")
+    # # ---------------------------------
+    # # model = dde.Model(data, net)
+    # # model.compile("adam", lr=1.0e-3)
+    # # ---------------------------------
+    # model = dde.Model(data, net)
+
+    model = create_model(quantum_numbers)
+
+    # MAIN EXPERIMENTS: decreasing learning rate
     model.compile("adam", lr=1.0e-3)
     checker = dde.callbacks.ModelCheckpoint(
         results_path+"model/model.ckpt", save_better_only=True, period=1000
@@ -360,6 +423,15 @@ def main():
     # X = geom.uniform_points(1000000)
     # wavefunc_pred = model.predict(X)
 
+
+    ## RESTORE BEST STEP ##
+    tf.compat.v1.reset_default_graph()
+    model = create_model(quantum_numbers)
+    model.compile("adam", lr=1.0e-3)
+    with open(results_path+"model/best_step.txt", "r") as text_file:
+        best = text_file.readlines()[0]
+    model.restore(results_path+"model/model.ckpt-" + best, verbose=1)
+
     ## PLOT FOR Y=0 ##
     rmax = 20
     n_points = 1000 # must be an even number
@@ -391,15 +463,22 @@ def main():
     wavefunction_pred = wavefunction_pred.reshape((n_points, n_points))
     p_pred = wavefunction_pred**2
 
-    fig, (ax1, ax2) = plt.subplots(1,2)
-    ax1.imshow(p_gt,extent=[-rmax, rmax, -rmax, rmax], interpolation='none',origin='lower', cmap=cm.hot)
+    fig, (ax1, ax2, ax3) = plt.subplots(1,3, figsize=(20,15))
+    plt1 = ax1.imshow(p_gt,extent=[-rmax, rmax, -rmax, rmax], interpolation='none',origin='lower', cmap=cm.hot)
     ax1.title.set_text('Exact solution')
     ax1.set_xlabel('x')
     ax1.set_ylabel('z')
-    ax2.imshow(p_pred,extent=[-rmax, rmax, -rmax, rmax], interpolation='none',origin='lower', cmap=cm.hot)
+    fig.colorbar(plt1,ax=ax1,fraction=0.046, pad=0.04)
+    plt2 = ax2.imshow(p_pred,extent=[-rmax, rmax, -rmax, rmax], interpolation='none',origin='lower', cmap=cm.hot)
     ax2.title.set_text('PINN prediction')
     ax2.set_xlabel('x')
     ax2.set_ylabel('z')
+    fig.colorbar(plt2,ax=ax2,fraction=0.046, pad=0.04)
+    plt3 = ax3.imshow(np.abs(p_gt-p_pred),extent=[-rmax, rmax, -rmax, rmax], interpolation='none',origin='lower', cmap=cm.hot)
+    ax3.title.set_text('Absolute error')
+    ax3.set_xlabel('x')
+    ax3.set_ylabel('z')
+    fig.colorbar(plt3,ax=ax3,fraction=0.046, pad=0.04)
     fig.suptitle('{n},{l},{m} ORBITAL'.format(n=n, l=l, m=m))
     plt.savefig(results_path + '{n}{l}{m}.png'.format(n=n, l=l, m=m))
 
