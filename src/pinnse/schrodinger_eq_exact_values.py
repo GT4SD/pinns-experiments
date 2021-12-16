@@ -12,29 +12,14 @@ from matplotlib import cm
 hbar = 1
 a0 = 1
 
-# def TISE_hydrogen_exact(r, theta, phi, n=1, l=0, m=0, Z=1):
-#     '''
-#     https://www.bcp.fu-berlin.de/en/chemie/chemie/forschung/PhysTheoChem/agkeller/_Docs/TC_WS15_Ex07.pdf
-#     give r, theta, phi as np.linspace
-#     n, l, m are the quantum numbers
-#     '''
-#     R_prefactor = np.sqrt( ((2*Z)/(a0*n*hbar**2))**3 * np.math.factorial(n-l-1)/(2*n*np.math.factorial(n+l)) )
-#     R_nl = R_prefactor * np.exp(-r*Z/(n*a0*hbar**2)) * (2*r*Z/(n*a0*hbar**2))**l * genlaguerre(n-l-1,2*l+1)(2*r*Z/(n*a0*hbar**2))
-    
-#     f_prefactor = (-1)**m * np.sqrt( (2*l+1)*np.math.factorial(l-m) / (4*pi*np.math.factorial(l+m)) )
-#     f_lm = f_prefactor * lpmv(m,l,np.cos(theta))
-
-#     g_m_real = np.cos(m*phi)
-#     g_m_imaginary = np.sin(m*phi)
-#     #g_m = np.vstack([g_m_real, g_m_imaginary])
-
-#     return R_nl, f_lm, g_m_real
 
 def TISE_hydrogen_exact(r, theta, phi, n=1, l=0, m=0, Z=1):
     '''
     https://www.bcp.fu-berlin.de/en/chemie/chemie/forschung/PhysTheoChem/agkeller/_Docs/TC_WS15_Ex07.pdf
-    give r, theta, phi as np.linspace
-    n, l, m are the quantum numbers
+    - Give r, theta, phi as np.arrays, they must have the same shape. They represent the spherical values
+        on the given grid (array).
+    - n, l, m are the quantum numbers.
+    - Only returns the real part of the orbitals.
     '''
     R_prefactor = np.sqrt( ((2*Z)/(a0*n))**3 * np.math.factorial(n-l-1)/(2*n*np.math.factorial(n+l)) )
     R_nl = R_prefactor * np.exp(-r*Z/(n*a0)) * (2*r*Z/(n*a0))**l * genlaguerre(n-l-1,2*l+1)(2*r*Z/(n*a0))
@@ -49,6 +34,45 @@ def TISE_hydrogen_exact(r, theta, phi, n=1, l=0, m=0, Z=1):
     #g_m = np.vstack([g_m_real, g_m_imaginary])
 
     return R_nl, f_lm, g_m_real
+
+
+def TISE_stark_effect_exact(r, theta, phi, electric_field, n=2, m=0):
+    '''
+    http://www.physics.drexel.edu/~bob/Manuscripts/stark.pdf
+    - n, m is the manifold to consider (So we have non-degenerate energy values!)
+    - returns: eigenvalues, eigenvectors acted on r, theta, phi
+    '''
+    assert n>m, "n must have a greater value than m!"
+    factor = - 3 * e * electric_field * a0 / 2
+    m_abs = np.abs(m)
+    if (n - m_abs) > 1:
+        l_values = [x for x in range(m_abs+1, n)]
+        M = np.zeros((len(l_values)+1, len(l_values)+1)) # initialize matrix
+        for i,l in enumerate(l_values):
+            R = n * np.sqrt((n-l) * (n+l))
+            A = np.sqrt((l+m_abs) * (l-m_abs) / ((2*l +1) * (2*l -1)))
+            M[i][i+1] = A * R
+            M[i+1][i] = A * R
+        w, v = np.linalg.eig(M) # Eigenvalues / Eigenvectors
+        l_values = [x for x in range(m_abs, n)]
+        basis_list = []
+        for l in l_values:
+            basis_list.append(TISE_hydrogen_exact(r, theta, phi, n=n, l=l, m=m))
+        basis_list = [R*f*g for (R,f,g) in basis_list]
+        basis_array = np.stack(basis_list, axis=-1)
+        output_list = []
+        for i in range(len(w)):
+            val = np.matmul(basis_array, v[:,i])
+            output_list.append(np.expand_dims(val, axis=0))
+        eigenvectors = np.vstack(output_list)
+        eigenvalues = factor * w
+    else:
+        eigenvalues = np.array([0])
+        R, f, g = TISE_hydrogen_exact(r, theta, phi, n=n, l=m_abs, m=m)
+        eigenvector = R*f*g
+        eigenvectors = np.expand_dims(eigenvector, axis=0)
+    return eigenvalues, eigenvectors
+
 
 
 def TISE_hydrogen_1d_exact(x, n=1):
@@ -187,34 +211,6 @@ def main():
 
     # TODO: careful with prefactors
 
-    
-def main_1d(): # FOR 1D EQUATION
-    x = np.linspace(-3, 3, 10000)
-    # pl_1, mi_1 = TISE_hydrogen_1d_exact(x)
-    # pl_2, mi_2 = TISE_hydrogen_1d_exact(x, 2)
-    # pl_3, mi_3 = TISE_hydrogen_1d_exact(x, 3)
-    # pl_4, mi_4 = TISE_hydrogen_1d_exact(x, 4)
-    # results = [[pl_1, mi_1], [pl_2, mi_2], [pl_3, mi_3], [pl_4, mi_4]]
-
-    f = plt.figure(figsize=(12,8))
-    n_vals = [1,2,3,3]
-    for i, n in enumerate(n_vals):
-
-        sp = f.add_subplot(2,2,i+1)
-        results_pl_re, results_pl_im = TISE_hydrogen_1d_momentum_space_exact(x, n=n)[0]
-        zeros_re, zeros_im = TISE_hydrogen_1d_momentum_space_exact(0)[0]
-        results_pl_re, results_pl_im = results_pl_re/zeros_re, results_pl_im/zeros_re
-        plt.plot(x, results_pl_re, '.r', label='real part')
-        plt.plot(x, results_pl_im, '.k', label='imaginary part')
-        # plt.plot(pl_axis, results[i][0][500:], '.r')
-        # plt.plot(mi_axis, results[i][1][:500], '.r')
-        plt.legend(loc="best")
-        plt.xlabel('p')
-        plt.ylabel('phi')
-        plt.title('n = '+str(n))
-
-    plt.show()
-
 
 def test():
     # def integrand(x):
@@ -232,19 +228,34 @@ def test():
     # plt.plot(r, R_nl, '.r')
     # plt.show()
 
-    rmax = 30
+    rmax = 50
     n_points = 100 # must be an even number
     x = np.linspace(-rmax,rmax,n_points)
     y = np.linspace(-rmax,rmax,n_points)
     z = np.linspace(-rmax,rmax,n_points)
     X, Y, Z = np.meshgrid(x, y, z)
-    r = np.sqrt(X**2 + Z**2)
-    theta = np.arctan(np.sqrt(X**2) / Z)
-    phi = np.arctan(Y / X)
+    r = np.sqrt(X**2 + Y**2 + Z**2)
+    theta = np.arctan(np.sqrt(X**2 + Y**2) / Z)
+    theta = np.where(theta<0,np.pi+theta,theta)
+    phi = np.where(X<0, np.arctan(Y/X), np.arctan(Y/X)+pi)
 
-    R_nl, f_lm, g_m = TISE_hydrogen_exact(r, theta, phi, 4,2,0)
-    wavefunction = R_nl*f_lm*g_m
-    #p = r**2 * wavefunction**2
+    # R_nl, f_lm, g_m = TISE_hydrogen_exact(r, theta, phi, 4,2,0)
+    # wavefunction = R_nl*f_lm*g_m
+    # #p = r**2 * wavefunction**2
+    # p = wavefunction**2
+
+    # eigenvalues, eigenvectors = TISE_stark_effect_exact(r, theta, phi, electric_field=0, n=2, m=0)
+    # wavefunction = eigenvectors[0]
+    # p = wavefunction**2
+
+    def solution_prior_20index0(r, theta, phi):
+        alpha = 1 / (4*np.sqrt(2*pi))
+        beta = alpha*r*np.exp(-r/(2*a0)) / (a0**(5/2))
+        sol_w = beta * np.cos(theta) # 210
+        sol_z = alpha * (1/(a0**(3/2))) * (2 - (r/a0)) * np.exp(-r/(2*a0)) # 200
+        sol_u = (1/np.sqrt(2)) * (sol_w + sol_z)
+        return sol_u
+    wavefunction = solution_prior_20index0(r,theta,phi)
     p = wavefunction**2
 
     # checking the normalization!
@@ -254,10 +265,85 @@ def test():
     print(p.shape)
 
 
+# def test():
+#     limit = 30
+#     n = 3
+#     r = np.linspace(0,limit,10000)
+#     R,f,g = TISE_hydrogen_exact(r,0,0,n,1,0)
+
+#     from scipy.integrate import simps, quad
+#     def func(x):
+#         R,f,g = TISE_hydrogen_exact(x,0,0,n,1,0)
+#         return R**2 * x**2
+#     integrand = R**2 * r**2
+#     C = simps(integrand, r)
+#     print('simps: ', C)
+#     C2 = quad(func, 0, limit)
+#     print('quad: ', C2)
+#     C3 = quad(func, 0, np.inf)
+#     print('real: ', C3)
+
+
+def main():
+    # ----------------------
+    rmax = 30
+    n_points = 1000 # must be an even number
+    x = np.linspace(-rmax,rmax,n_points)
+    z = np.linspace(-rmax,rmax,n_points)
+    X, Z = np.meshgrid(x, z)
+    r = np.sqrt(X**2 + Z**2)
+    theta = np.arctan(np.sqrt(X**2) / Z)
+    theta = np.where(theta<0,np.pi+theta,theta)
+    phi = [pi*np.ones([n_points,int(np.floor(n_points/2))])
+        , np.zeros([n_points,int(np.ceil(n_points/2))])]
+    phi = np.hstack(phi)
+
+    electric_field = 10e6
+    eigenvalues, eigenvectors = TISE_stark_effect_exact(r, theta, phi, electric_field, n=2, m=0) 
+    # ----------------------
+
+    print(eigenvalues / (- 3 * e * electric_field * a0 / 2) )
+    from matplotlib import cm
+    for i in range(len(eigenvalues)):
+        # if i != 3:
+        #     continue
+        p = eigenvectors[i]**2
+        fig = plt.figure()
+        plt.imshow(p,extent=[-rmax, rmax, -rmax, rmax], interpolation='none',origin='lower', cmap=cm.hot) 
+        plt.xlabel('x')
+        plt.ylabel('z')
+        plt.title('Probability distribution')
+        plt.show()
+
+    # # Test for n=4, m=0 TODO: passed
+    # a = TISE_hydrogen_exact(r, theta, phi, n=4, l=0, m=0)
+    # a = a[0] * a[1] * a[2]
+    # #a = - np.sqrt(5/20) * a # -12
+    # a = - np.sqrt(5/20) * a # 4
+    # b = TISE_hydrogen_exact(r, theta, phi, n=4, l=1, m=0)
+    # b = b[0] * b[1] * b[2]
+    # #b = np.sqrt(9/20) * b
+    # b = -np.sqrt(1/20) * b
+    # c = TISE_hydrogen_exact(r, theta, phi, n=4, l=2, m=0)
+    # c = c[0] * c[1] * c[2]
+    # #c = - np.sqrt(5/20) * c
+    # c = np.sqrt(5/20) * c
+    # d = TISE_hydrogen_exact(r, theta, phi, n=4, l=3, m=0)
+    # d = d[0] * d[1] * d[2]
+    # #d = np.sqrt(1/20) * d
+    # d = np.sqrt(9/20) * d
+    # gt = a + b + c + d
+    # p_gt = gt**2
+    # fig = plt.figure()
+    # plt.imshow(p_gt,extent=[-rmax, rmax, -rmax, rmax], interpolation='none',origin='lower', cmap=cm.hot) 
+    # plt.xlabel('x')
+    # plt.ylabel('z')
+    # plt.title('Probability distribution')
+    # plt.show()
 
 if __name__ == "__main__":
-    main()
-    #test()
+    #main()
+    test()
 
 
 
