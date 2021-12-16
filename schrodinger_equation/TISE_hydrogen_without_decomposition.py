@@ -240,12 +240,12 @@ def create_model(quantum_numbers):
         return on_boundary and np.isclose(x[2], 0)
     def u_func(x):
         r, theta, phi = x[:,0:1], x[:,1:2], x[:,2:3]
-        n, l, m = list(quantum_numbers.values())
+        n, l, m = quantum_numbers.values()
         R, f, g = TISE_hydrogen_exact(r, theta, phi, n,l,m)
         return R*f*g
     def v_func(x):
         r, theta, phi = x[:,0:1], x[:,1:2], x[:,2:3]
-        n, l, m = list(quantum_numbers.values())
+        n, l, m = quantum_numbers.values()
         R, f, g = TISE_hydrogen_exact(r, theta, phi, n,l,m)
         g = np.sin(m*phi) / np.sqrt(2*pi)
         return R*f*g
@@ -296,61 +296,6 @@ def main():
     import os
     if not os.path.exists(results_path):
         os.makedirs(results_path)
-
-    # # ---------------------------------
-    # # geom = dde.geometry.Cuboid(xmin=[0,0,0], xmax=[30*a0, np.pi, 2*np.pi])
-    # # def boundary_right(x, on_boundary):
-    # #     return on_boundary and np.isclose(x[0], 30*a0, atol=a0*1e-08)
-    # geom = dde.geometry.Cuboid(xmin=[0,0,0], xmax=[30, np.pi, 2*np.pi])
-    # def boundary_right(x, on_boundary):
-    #     return on_boundary and np.isclose(x[0], 30)
-    # def g_boundary_left(x, on_boundary):
-    #     return on_boundary and np.isclose(x[2], 0)
-    # def u_func(x):
-    #     r, theta, phi = x[:,0:1], x[:,1:2], x[:,2:3]
-    #     n, l, m = list(quantum_numbers.values())
-    #     R, f, g = TISE_hydrogen_exact(r, theta, phi, n,l,m)
-    #     return R*f*g
-    # def v_func(x):
-    #     r, theta, phi = x[:,0:1], x[:,1:2], x[:,2:3]
-    #     n, l, m = list(quantum_numbers.values())
-    #     R, f, g = TISE_hydrogen_exact(r, theta, phi, n,l,m)
-    #     g = np.sin(m*phi) / np.sqrt(2*pi)
-    #     return R*f*g
-    # bc_cheating_u = dde.DirichletBC(geom, u_func, lambda _, on_boundary: on_boundary, component=0)
-    # bc_cheating_v = dde.DirichletBC(geom, v_func, lambda _, on_boundary: on_boundary, component=1)
-    # bc_u = dde.DirichletBC(geom, lambda x:0, boundary_right, component=0)
-    # bc_v = dde.DirichletBC(geom, lambda x:0, boundary_right, component=1)
-    # bc_g_u = PeriodicBC(geom, 2, g_boundary_left, periodicity="symmetric", component=0)
-    # bc_g_v = PeriodicBC(geom, 2, g_boundary_left, periodicity="symmetric", component=1)
-    # #data = CustomPDE(geom, pde_polar, bcs=[bc_u, bc_v, bc_g_u, bc_g_v], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
-    # # TODO: uncomment the following line for strict boundary conditions
-    # data = CustomPDE(geom, pde_polar, bcs=[bc_cheating_u, bc_cheating_v, bc_u, bc_v, bc_g_u, bc_g_v], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
-    # # ---------------------------------
-    # # geom = dde.geometry.Cuboid(xmin=[-20,-20,-20], xmax=[20, 20, 20]) # TODO: setup for cartesian coordinates
-    # # def boundary_right_x(x, on_boundary):
-    # #     return on_boundary and np.isclose(x[0], 20)
-    # # def boundary_right_y(x, on_boundary):
-    # #     return on_boundary and np.isclose(x[1], 20)
-    # # def boundary_right_z(x, on_boundary):
-    # #     return on_boundary and np.isclose(x[2], 20)
-    # # bc1 = dde.DirichletBC(geom, lambda x:0, boundary_right_x)
-    # # bc2 = dde.DirichletBC(geom, lambda x:0, boundary_right_y)
-    # # bc3 = dde.DirichletBC(geom, lambda x:0, boundary_right_z)
-    # # data = CustomPDE(geom, pde, bcs=[bc1, bc2, bc3], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
-    # # ---------------------------------
-
-    # #net = dde.maps.FNN([3] + [128] * 10 + [64] * 5 + [32] * 5 + [2], "tanh", "Glorot normal")
-    # net = dde.maps.FNN([3] + [32] * 3 + [2], "tanh", "Glorot normal")
-    # # backbone = [3] + [64]
-    # # neck = [list(np.ones(2, dtype=int)*32)] * 3 
-    # # head = [2]
-    # # net = dde.maps.PFNN(backbone + neck + head, "tanh", "Glorot normal")
-    # # ---------------------------------
-    # # model = dde.Model(data, net)
-    # # model.compile("adam", lr=1.0e-3)
-    # # ---------------------------------
-    # model = dde.Model(data, net)
 
     model = create_model(quantum_numbers)
 
