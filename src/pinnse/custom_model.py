@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from math import pi
 
 
 __all__ = ["Model", "TrainState", "LossHistory"]
@@ -748,7 +749,9 @@ class CustomLossModel(dde.Model): # TODO: change name to sth more generic, this 
         if self.loss == "WeightedLoss":
             loss_fn.set_weights(self.net.inputs)
         elif self.loss == "NormalizationLoss":
-            loss_fn.set_domain(self.net.inputs)
+            # TODO: change this to a general setup!
+            loss_fn.set_variables(self.net.outputs[:,0:1], domain_area=4*pi*(30**3)/3,\
+                 n_points_domain=self.data.num_domain, n_points_boundary=self.data.num_boundary)
 
         # Data losses
         losses = self.data.losses(self.net.targets, self.net.outputs, loss_fn, self)
@@ -771,6 +774,7 @@ class CustomLossModel(dde.Model): # TODO: change name to sth more generic, this 
             total_loss, self.opt_name, learning_rate=lr, decay=decay
         )
 
+    # TODO: implement NormalizationLoss for tensorflow
     def _compile_tensorflow(self, lr, loss_fn, decay, loss_weights):
         """tensorflow"""
 
@@ -840,7 +844,7 @@ class CustomLossModel(dde.Model): # TODO: change name to sth more generic, this 
             else train_step_tfp
         )
 
-    # TODO: implement WeightedLoss for pytorch
+    # TODO: implement WeightedLoss, NormalizationLoss for pytorch
     def _compile_pytorch(self, lr, loss_fn, decay, loss_weights):
         """pytorch"""
 
@@ -965,9 +969,14 @@ class CustomLossModel(dde.Model): # TODO: change name to sth more generic, this 
 
         ##############################
         if self.prior_learned:
-            self.saver = tf.train.import_meta_graph(self.prior_save_path + '-0.meta') # saving after setting epoch back to 0!
-            pth = os.path.split(self.prior_save_path)[0]
-            self.saver.restore(self.sess,tf.train.latest_checkpoint(pth))
+            # self.saver = tf.train.import_meta_graph(self.prior_save_path + '-0.meta') # saving after setting epoch back to 0!
+            # #self.saver = tf.train.import_meta_graph(self.prior_save_path + '-0.ckpt,meta') # saves under this name on cluster
+            # pth = os.path.split(self.prior_save_path)[0]
+            # self.saver.restore(self.sess,tf.train.latest_checkpoint(pth))
+
+            self.restore(self.prior_save_path+"-0", verbose=1)
+            #self.restore(self.prior_save_path+"-0.ckpt", verbose=1) # .ckpt extension for cluster
+            self.prior_learned = False
         ##############################
 
         if model_restore_path is not None:
