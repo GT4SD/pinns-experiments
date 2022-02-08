@@ -1,3 +1,6 @@
+import yaml
+import argparse
+
 from deepxde import backend
 import numpy as np
 import tensorflow as tf
@@ -5,6 +8,7 @@ print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 import matplotlib.pyplot as plt
 import deepxde as dde
 from scipy.constants import h, epsilon_0, hbar, pi, e, electron_mass, physical_constants
+a0 = physical_constants["Bohr radius"][0]
 from pinnse.schrodinger_eq_exact_values import TISE_hydrogen_exact
 
 from pinnse.custom_model import CustomLossModel
@@ -13,12 +17,13 @@ from pinnse.custom_pde import CustomPDE
 from pinnse.basis_functions import FourierBasis
 from matplotlib import cm
 
+# ATOMIC UNITS
 hbar = 1
 a0 = 1
-electron_mass = (4*pi*epsilon_0) / (e**2) # due to hbar, a0 = 1
-h = hbar * 2 * pi # due to hbar=1
-
-#a0 = physical_constants["Bohr radius"][0]
+e = 1
+electron_mass = 1
+epsilon_0 = 1 / (4*pi)
+h = hbar * 2 * pi
 
 tf.random.set_seed(5)
 
@@ -200,9 +205,12 @@ def pde_polar(args, wavefunction, **quantum_numbers):
     return [ex1 , ex2, ex3, ex4, ex5, ex6]
 
 
-def normalize_output(model):
+def normalize_output(model, experiment_params):
+    radial_extent = experiment_params["radial_extent"]
+
     from scipy.integrate import simps
-    rmax = 20
+    #rmax = 20
+    rmax = np.sqrt((radial_extent**2) / 3)
     n_points = 100 # must be an even number
     x = np.linspace(-rmax,rmax,n_points)
     y = np.linspace(-rmax,rmax,n_points)
@@ -217,10 +225,13 @@ def normalize_output(model):
     theta = theta.reshape((n_points**3, 1))
     phi = phi.reshape((n_points**3, 1))
     input = np.hstack((r, theta, phi))
-    predictions = model.predict(input)[:,0]
-    predictions = predictions.reshape((n_points, n_points, n_points))
+    predictions_u = model.predict(input)[:,0]
+    predictions_v = model.predict(input)[:,1]
+    predictions_u = predictions_u.reshape((n_points, n_points, n_points))
+    predictions_v = predictions_v.reshape((n_points, n_points, n_points))
 
-    integrand = predictions**2
+    #integrand = predictions_u**2 # if we assume Im(wavefunction)=0
+    integrand = predictions_u**2 + predictions_v**2
     integral = simps(integrand, z)
     integral = simps(integral, y)
     integral = simps(integral, x)
@@ -228,14 +239,19 @@ def normalize_output(model):
     return normalization_costant
 
 
-def create_model(quantum_numbers):
+def create_model(experiment_params=None, network_params=None):
+    assert experiment_params is not None and network_params is not None, "No parameters given!"
+
+    quantum_numbers = experiment_params["quantum_numbers"]
+    radial_extent = experiment_params["radial_extent"]
+
     # ---------------------------------
     # geom = dde.geometry.Cuboid(xmin=[0,0,0], xmax=[30*a0, np.pi, 2*np.pi])
     # def boundary_right(x, on_boundary):
     #     return on_boundary and np.isclose(x[0], 30*a0, atol=a0*1e-08)
-    geom = dde.geometry.Cuboid(xmin=[0,0,0], xmax=[30, np.pi, 2*np.pi])
+    geom = dde.geometry.Cuboid(xmin=[0,0,0], xmax=[radial_extent, np.pi, 2*np.pi])
     def boundary_right(x, on_boundary):
-        return on_boundary and np.isclose(x[0], 30)
+        return on_boundary and np.isclose(x[0], radial_extent)
     def g_boundary_left(x, on_boundary):
         return on_boundary and np.isclose(x[2], 0)
     def u_func(x):
@@ -249,15 +265,16 @@ def create_model(quantum_numbers):
         R, f, g = TISE_hydrogen_exact(r, theta, phi, n,l,m)
         g = np.sin(m*phi) / np.sqrt(2*pi)
         return R*f*g
-    bc_cheating_u = dde.DirichletBC(geom, u_func, lambda _, on_boundary: on_boundary, component=0)
-    bc_cheating_v = dde.DirichletBC(geom, v_func, lambda _, on_boundary: on_boundary, component=1)
+    bc_strict_u = dde.DirichletBC(geom, u_func, lambda _, on_boundary: on_boundary, component=0)
+    bc_strict_v = dde.DirichletBC(geom, v_func, lambda _, on_boundary: on_boundary, component=1)
     bc_u = dde.DirichletBC(geom, lambda x:0, boundary_right, component=0)
     bc_v = dde.DirichletBC(geom, lambda x:0, boundary_right, component=1)
     bc_g_u = PeriodicBC(geom, 2, g_boundary_left, periodicity="symmetric", component=0)
     bc_g_v = PeriodicBC(geom, 2, g_boundary_left, periodicity="symmetric", component=1)
     #data = CustomPDE(geom, pde_polar, bcs=[bc_u, bc_v, bc_g_u, bc_g_v], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
     # TODO: uncomment the following line for strict boundary conditions
-    data = CustomPDE(geom, pde_polar, bcs=[bc_cheating_u, bc_cheating_v, bc_u, bc_v, bc_g_u, bc_g_v], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
+    data = CustomPDE(geom, pde_polar, bcs=[bc_strict_u, bc_strict_v, bc_u, bc_v, bc_g_u, bc_g_v],\
+         num_domain=network_params["num_domain"], num_boundary=network_params["num_boundary"], pde_extra_arguments=quantum_numbers)
     # ---------------------------------
     # geom = dde.geometry.Cuboid(xmin=[-20,-20,-20], xmax=[20, 20, 20]) # TODO: setup for cartesian coordinates
     # def boundary_right_x(x, on_boundary):
@@ -272,74 +289,65 @@ def create_model(quantum_numbers):
     # data = CustomPDE(geom, pde, bcs=[bc1, bc2, bc3], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
     # ---------------------------------
 
-    #net = dde.maps.FNN([3] + [128] * 10 + [64] * 5 + [32] * 5 + [2], "tanh", "Glorot normal")
-    net = dde.maps.FNN([3] + [32] * 3 + [2], "tanh", "Glorot normal")
-    # backbone = [3] + [64]
-    # neck = [list(np.ones(2, dtype=int)*32)] * 3 
-    # head = [2]
-    # net = dde.maps.PFNN(backbone + neck + head, "tanh", "Glorot normal")
-    # ---------------------------------
-    # model = dde.Model(data, net)
-    # model.compile("adam", lr=1.0e-3)
-    # ---------------------------------
-    # MAIN EXPERIMENTS: decreasing learning rate
+    if network_params["backbone"] == "FNN":
+        #net = dde.maps.FNN([3] + [50] * 4 + [2], "tanh", "Glorot normal")
+        net = dde.maps.FNN(network_params["layers"], "tanh", "Glorot normal")
+    elif network_params["backbone"] == "ResNet":
+        input_size = network_params["input_size"]
+        output_size = network_params["output_size"]
+        num_neurons = network_params["num_neurons"]
+        num_blocks = network_params["num_blocks"]
+        net = dde.maps.ResNet(input_size, output_size, num_neurons, num_blocks, "tanh", "Glorot normal")
+    else:
+        raise NotImplementedError("Only FNN backbone is experiment ready!")
+
     model = dde.Model(data, net)
-    return model
+    return model, geom, data, net
 
 
-def main():
+def main(config_path=None):
+    
+    if config_path is None:
+        root = "/Users/lat/Desktop/Code/pinns-experiments/schrodinger_equation/"
+        config_path = root + "experiment_configs/TISE_hydrogen_without_decomposition/config_210.yaml"
+    
+    with open(config_path, "r") as file:
+        config = yaml.load(file, Loader=yaml.FullLoader)
+
+    experiment_params = config["experiment_params"]
+    network_params = config["network_params"]
+    prior_params = config["prior_params"]
+    results_path = config["results_path"]
     #results_path = '/Users/lat/Desktop/Code/pinns-experiments/schrodinger_equation/results_TISE_hydrogen_without_decomposition/' # path in local
-    results_path = './results_TISE_hydrogen_without_decomposition/'
-    quantum_numbers = {'n':3, 'l':2, 'm':0}
+
+    quantum_numbers = experiment_params["quantum_numbers"]
+
     folder = str(quantum_numbers["n"]) + str(quantum_numbers["l"]) + str(quantum_numbers["m"]) + '/'
     results_path = results_path + folder
     import os
     if not os.path.exists(results_path):
         os.makedirs(results_path)
 
-    model = create_model(quantum_numbers)
+    model, geom, data, net = create_model(experiment_params, network_params)
 
     # MAIN EXPERIMENTS: decreasing learning rate
-    model.compile("adam", lr=1.0e-3)
-    checker = dde.callbacks.ModelCheckpoint(
-        results_path+"model/model.ckpt", save_better_only=True, period=1000
-    )
-    losshistory, train_state = model.train(50000, callbacks=[checker])
-    with open(results_path+"model/best_step.txt", "w") as text_file:
-        text_file.write(str(train_state.best_step))
-    ### ------------- ###
-    model.compile("adam", lr=1.0e-5)
-    with open(results_path+"model/best_step.txt") as f:
-        best = f.readlines()[0]
-    model.restore(results_path + "model/model.ckpt-" + best, verbose=1)
-    checker = dde.callbacks.ModelCheckpoint(
-        results_path+"model/model.ckpt", save_better_only=True, period=1000
-    )
-    losshistory, train_state = model.train(50000, callbacks=[checker])
-    with open(results_path+"model/best_step.txt", "w") as text_file:
-        text_file.write(str(train_state.best_step))
-    ### ------------- ###
-    model.compile("adam", lr=1.0e-6)
-    with open(results_path+"model/best_step.txt") as f:
-        best = f.readlines()[0]
-    model.restore(results_path + "model/model.ckpt-" + best, verbose=1)
-    checker = dde.callbacks.ModelCheckpoint(
-        results_path+"model/model.ckpt", save_better_only=True, period=1000
-    )
-    losshistory, train_state = model.train(5000, callbacks=[checker])
-    with open(results_path+"model/best_step.txt", "w") as text_file:
-        text_file.write(str(train_state.best_step))
-    ### ------------- ###
-    model.compile("adam", lr=1.0e-7)
-    with open(results_path+"model/best_step.txt") as f:
-        best = f.readlines()[0]
-    model.restore(results_path + "model/model.ckpt-" + best, verbose=1)
-    checker = dde.callbacks.ModelCheckpoint(
-        results_path+"model/model.ckpt", save_better_only=True, period=1000
-    )
-    losshistory, train_state = model.train(5000, callbacks=[checker])
-    with open(results_path+"model/best_step.txt", "w") as text_file:
-        text_file.write(str(train_state.best_step))
+    # TODO: comment out model restoring when running on cluster
+    assert len(network_params["lrs"]) == len(network_params["optimizers"]) and \
+        len(network_params["lrs"]) == len(network_params["epochs"]), "Incompatible network parameter lengths!"
+    for i in range(len(network_params["lrs"])):
+        lr = float(network_params["lrs"][i])
+        optimizer = network_params["optimizers"][i]
+        epoch = network_params["epochs"][i]
+        model.compile(optimizer=optimizer, lr=lr, loss_weights=network_params["loss_weights"])
+        # with open(results_path+"model/best_step.txt") as f: # TODO: add this after first loop
+        #     best = f.readlines()[0]
+        # model.restore(results_path + "model/model.ckpt-" + best, verbose=1)
+        checker = dde.callbacks.ModelCheckpoint(
+            results_path+"model/model.ckpt", save_better_only=True, period=1000
+        )
+        losshistory, train_state = model.train(epochs=epoch, callbacks=[checker])
+        with open(results_path+"model/best_step.txt", "w") as text_file:
+            text_file.write(str(train_state.best_step))
 
     # ---------------------------------
     # model = CustomLossModel(data, net)
@@ -369,13 +377,13 @@ def main():
     # wavefunc_pred = model.predict(X)
 
 
-    ## RESTORE BEST STEP ##
-    tf.compat.v1.reset_default_graph()
-    model = create_model(quantum_numbers)
-    model.compile("adam", lr=1.0e-3)
-    with open(results_path+"model/best_step.txt", "r") as text_file:
-        best = text_file.readlines()[0]
-    model.restore(results_path+"model/model.ckpt-" + best, verbose=1)
+    # ## RESTORE BEST STEP ##
+    # tf.compat.v1.reset_default_graph()
+    # model = create_model(quantum_numbers)
+    # model.compile("adam", lr=1.0e-3)
+    # with open(results_path+"model/best_step.txt", "r") as text_file:
+    #     best = text_file.readlines()[0]
+    # model.restore(results_path+"model/model.ckpt-" + best, verbose=1)
 
     ## PLOT FOR Y=0 ##
     rmax = 20
@@ -402,7 +410,7 @@ def main():
     wavefunction_pred = model.predict(input_format)
     wavefunction_pred = wavefunction_pred[:,0:1] # real part
     # normalization
-    normalization_constant = normalize_output(model=model)
+    normalization_constant = normalize_output(model=model, experiment_params=experiment_params)
     wavefunction_pred = normalization_constant * wavefunction_pred
     ###############
     wavefunction_pred = wavefunction_pred.reshape((n_points, n_points))
@@ -429,4 +437,15 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+
+    #root = "/Users/lat/Desktop/Code/pinns-experiments/schrodinger_equation/"
+    root = "./"
+    default_config_path = root + "experiment_configs/TISE_hydrogen_without_decomposition/config_210.yaml"
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config_path', type=str, \
+        default=default_config_path ,help='Path to the experiment config file.')
+    args = parser.parse_args()
+    config_path = args.config_path
+
+    main(config_path)

@@ -1,9 +1,13 @@
+import yaml
+import argparse
+
 from deepxde import backend
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import deepxde as dde
 from scipy.constants import h, epsilon_0, hbar, pi, e, electron_mass, physical_constants
+a0 = physical_constants["Bohr radius"][0]
 from scipy.integrate import simps
 from pinnse.schrodinger_eq_exact_values import TISE_hydrogen_exact, TISE_stark_effect_exact
 
@@ -12,10 +16,13 @@ from pinnse.custom_boundary_conditions import PeriodicBC
 from pinnse.custom_pde import CustomPDE
 from pinnse.basis_functions import FourierBasis
 
+# ATOMIC UNITS
 hbar = 1
 a0 = 1
-electron_mass = (4*pi*epsilon_0) / (e**2) # due to hbar, a0 = 1
-h = hbar * 2 * pi # due to hbar=1
+e = 1
+electron_mass = 1
+epsilon_0 = 1 / (4*pi)
+h = hbar * 2 * pi
 
 tf.random.set_seed(5)
 
@@ -25,6 +32,49 @@ def fourier_prior(args, f):
     basis = FourierBasis(max_k=10)
     representation = basis.compute(x)
     return representation - y
+
+
+def solution_prior_210(args, wavefunction):
+    r, theta, phi = args[:,0:1], args[:,1:2], args[:,2:3]
+    u, v = wavefunction[:,0:1], wavefunction[:,1:2]
+    alpha = 1 / (4*np.sqrt(2*pi))
+    beta = alpha*r*tf.math.exp(-r/(2*a0)) / (a0**(5/2))
+    sol_u = beta * tf.cos(theta)
+    sol_v = 0
+
+    du_dr = dde.grad.jacobian(wavefunction, args, i=0, j=0)
+    du_drr = dde.grad.hessian(wavefunction, args, component=0, i=0, j=0)
+    du_dtheta = dde.grad.jacobian(wavefunction, args, i=0, j=1)
+    du_dthetatheta = dde.grad.hessian(wavefunction, args, component=0, i=1, j=1)
+    du_dphi = dde.grad.jacobian(wavefunction, args, i=0, j=2)
+    du_dphiphi = dde.grad.hessian(wavefunction, args, component=0, i=2, j=2)
+
+    dv_dr = dde.grad.jacobian(wavefunction, args, i=1, j=0)
+    dv_drr = dde.grad.hessian(wavefunction, args, component=1, i=0, j=0)
+    dv_dtheta = dde.grad.jacobian(wavefunction, args, i=1, j=1)
+    dv_dthetatheta = dde.grad.hessian(wavefunction, args, component=1, i=1, j=1)
+    dv_dphi = dde.grad.jacobian(wavefunction, args, i=1, j=2)
+    dv_dphiphi = dde.grad.hessian(wavefunction, args, component=1, i=2, j=2)
+
+    sol_u_dr = (alpha * tf.cos(theta) * tf.math.exp(-r/(2*a0)) / (a0**(5/2))) - (alpha *tf.cos(theta)*r*tf.math.exp(-r/(2*a0)) / (2*(a0**(7/2))))
+    sol_u_drr = (-alpha * tf.cos(theta) * tf.math.exp(-r/(2*a0)) / (a0**(7/2))) + (alpha*tf.cos(theta)*r*tf.math.exp(-r/(2*a0)) / (4*(a0**(9/2))))
+    sol_u_dtheta = beta * (-tf.sin(theta))
+    sol_u_dthetatheta = beta * (-tf.cos(theta))
+    sol_u_dphi = 0
+    sol_u_dphiphi = 0
+
+    sol_v_dr = 0
+    sol_v_drr = 0
+    sol_v_dtheta = 0
+    sol_v_dthetatheta = 0
+    sol_v_dphi = 0
+    sol_v_dphiphi = 0
+
+    ex1,ex2,ex3,ex4,ex5,ex6 = sol_u_dr-du_dr, sol_u_drr-du_drr, sol_u_dtheta-du_dtheta, sol_u_dthetatheta-du_dthetatheta, sol_u_dphi-du_dphi, sol_u_dphiphi-du_dphiphi
+    ex7,ex8,ex9,ex10,ex11,ex12 = sol_v_dr-dv_dr, sol_v_drr-dv_drr, sol_v_dtheta-dv_dtheta, sol_v_dthetatheta-dv_dthetatheta, sol_v_dphi-dv_dphi, sol_v_dphiphi-dv_dphiphi
+
+    #return [sol_u - u, sol_v - v, ex1,ex2,ex3,ex4,ex5,ex6, ex7,ex8,ex9,ex10,ex11,ex12]
+    return [sol_u - u, sol_v - v]
 
 
 def solution_prior_20index0(args, wavefunction):
@@ -151,50 +201,68 @@ def pde_polar(args, wavefunction, **pde_extra_arguments):
     return [ex1 , ex2, ex3, ex4]
 
 
-def create_model(pde_extra_arguments, index):
-    quantum_numbers = pde_extra_arguments["quantum_numbers"]
-    electric_field = pde_extra_arguments["electric_field"]
-    delE = pde_extra_arguments["delE"]
+def create_model(experiment_params=None, network_params=None):
+    assert experiment_params is not None and network_params is not None, "No parameters given!"
+
+    quantum_numbers = experiment_params["quantum_numbers"]
+    electric_field = float(experiment_params["electric_field"])
+    index = experiment_params["index"] # which energy to consider for given manifold
+    radial_extent = experiment_params["radial_extent"]
+
     n, m = quantum_numbers.values()
+
+    eigenvalues, _ = TISE_stark_effect_exact(0,0,0, electric_field, n,m)
+    delE = eigenvalues[index]
+    pde_extra_arguments = {"quantum_numbers":quantum_numbers, "electric_field":electric_field, "delE":delE}
+
     def u_func(x):
         r, theta, phi = x[:,0:1], x[:,1:2], x[:,2:3]
         _, eigenvectors = TISE_stark_effect_exact(r, theta, phi, electric_field, n,m)
         return eigenvectors[index]
+    # def u_func(x): # Sanity check using TISE hydrogen solutions
+    #     r, theta, phi = x[:,0:1], x[:,1:2], x[:,2:3]
+    #     n, l, m = quantum_numbers.values()
+    #     R, f, g = TISE_hydrogen_exact(r, theta, phi, n,l,m)
+    #     return R*f*g
     def v_func(x): # TODO: generalize
         return 0
-    geom = dde.geometry.Cuboid(xmin=[0,0,0], xmax=[30, np.pi, 2*np.pi])
+    geom = dde.geometry.Cuboid(xmin=[0,0,0], xmax=[radial_extent, np.pi, 2*np.pi])
     def boundary_right(x, on_boundary):
-        return on_boundary and np.isclose(x[0], 30)
+        return on_boundary and np.isclose(x[0], radial_extent)
     def g_boundary_left(x, on_boundary):
         return on_boundary and np.isclose(x[2], 0)
-    bc_cheating_u = dde.DirichletBC(geom, u_func, lambda _, on_boundary: on_boundary, component=0)
-    bc_cheating_v = dde.DirichletBC(geom, v_func, lambda _, on_boundary: on_boundary, component=1)
+    bc_strict_u = dde.DirichletBC(geom, u_func, lambda _, on_boundary: on_boundary, component=0)
+    bc_strict_v = dde.DirichletBC(geom, v_func, lambda _, on_boundary: on_boundary, component=1)
     bc_u = dde.DirichletBC(geom, lambda x:0, boundary_right, component=0)
     bc_v = dde.DirichletBC(geom, lambda x:0, boundary_right, component=1)
     bc_g_u = PeriodicBC(geom, 2, g_boundary_left, periodicity="symmetric", component=0)
     bc_g_v = PeriodicBC(geom, 2, g_boundary_left, periodicity="symmetric", component=1)
     #data = CustomPDE(geom, pde_polar, bcs=[bc_u, bc_v, bc_g_u, bc_g_v], num_domain=1500, num_boundary=600, pde_extra_arguments=quantum_numbers)
     # TODO: uncomment the following line for strict boundary conditions
-    data = CustomPDE(geom, pde_polar, bcs=[bc_cheating_u, bc_cheating_v, bc_u, bc_v, bc_g_u, bc_g_v], num_domain=1500, num_boundary=600, pde_extra_arguments=pde_extra_arguments)
+    data = CustomPDE(geom, pde_polar, bcs=[bc_strict_u, bc_strict_v, bc_u, bc_v, bc_g_u, bc_g_v], num_domain=1500, num_boundary=600, pde_extra_arguments=pde_extra_arguments)
     
-    #net = dde.maps.FNN([3] + [128] * 10 + [64] * 5 + [32] * 5 + [2], "tanh", "Glorot normal")
-    net = dde.maps.FNN([3] + [32] * 3 + [2], "tanh", "Glorot normal")
-    # backbone = [3] + [64]
-    # neck = [list(np.ones(2, dtype=int)*32)] * 3 
-    # head = [2]
-    # net = dde.maps.PFNN(backbone + neck + head, "tanh", "Glorot normal")
-    # ---------------------------------
-    # model = dde.Model(data, net)
-    # model.compile("adam", lr=1.0e-3)
-    # ---------------------------------
-    # MAIN EXPERIMENTS: decreasing learning rate
+    if network_params["backbone"] == "FNN":
+        #net = dde.maps.FNN([3] + [50] * 4 + [2], "tanh", "Glorot normal")
+        net = dde.maps.FNN(network_params["layers"], "tanh", "Glorot normal")
+    elif network_params["backbone"] == "ResNet":
+        input_size = network_params["input_size"]
+        output_size = network_params["output_size"]
+        num_neurons = network_params["num_neurons"]
+        num_blocks = network_params["num_blocks"]
+        net = dde.maps.ResNet(input_size, output_size, num_neurons, num_blocks, "tanh", "Glorot normal")
+    else:
+        raise NotImplementedError("Only FNN backbone is experiment ready!")
+    
     model = dde.Model(data, net)
     return model, geom, data, net
 
 
-def normalize_output(model):
+def normalize_output(model, experiment_params):
+    radial_extent = experiment_params["radial_extent"]
+    
     from scipy.integrate import simps
-    rmax = 20
+    #rmax = 20
+    rmax = np.sqrt((radial_extent**2) / 3)
     n_points = 100 # must be an even number
     x = np.linspace(-rmax,rmax,n_points)
     y = np.linspace(-rmax,rmax,n_points)
@@ -209,10 +277,13 @@ def normalize_output(model):
     theta = theta.reshape((n_points**3, 1))
     phi = phi.reshape((n_points**3, 1))
     input = np.hstack((r, theta, phi))
-    predictions = model.predict(input)[:,0]
-    predictions = predictions.reshape((n_points, n_points, n_points))
+    predictions_u = model.predict(input)[:,0]
+    predictions_v = model.predict(input)[:,1]
+    predictions_u = predictions_u.reshape((n_points, n_points, n_points))
+    predictions_v = predictions_v.reshape((n_points, n_points, n_points))
 
-    integrand = predictions**2
+    #integrand = predictions_u**2 # if we assume Im(wavefunction)=0
+    integrand = predictions_u**2 + predictions_v**2
     integral = simps(integrand, z)
     integral = simps(integral, y)
     integral = simps(integral, x)
@@ -282,79 +353,65 @@ def main_initial():
     plt.show()
 
 
-def main():
-    results_path = '/Users/lat/Desktop/Code/pinns-experiments/schrodinger_equation/results_TISE_stark_effect/'
-    #results_path = './results_TISE_stark_effect/'
+def main(config_path=None):
+
+    if config_path is None:
+        root = "/Users/lat/Desktop/Code/pinns-experiments/schrodinger_equation/"
+        config_path = root + "experiment_configs/TISE_stark_effect/config_30index0.yaml"
+
+    with open(config_path, "r") as file:
+        config = yaml.load(file, Loader=yaml.FullLoader)
+
+    experiment_params = config["experiment_params"]
+    network_params = config["network_params"]
+    prior_params = config["prior_params"]
+    results_path = config["results_path"]
+    #results_path = '/Users/lat/Desktop/Code/pinns-experiments/schrodinger_equation/results_TISE_stark_effect/' # path in local
+
     # To be specified quantum numbers are n and m, since the manifolds are defined only by m for a given n,
     # l has then the values: m <= l <= n-1
-    quantum_numbers = {'n':2, 'm':0}
-    electric_field = 10e-14
-    index = 0 # which energy to consider for given manifold
+    quantum_numbers = experiment_params["quantum_numbers"]
+    electric_field = float(experiment_params["electric_field"])
+    index = experiment_params["index"] # which energy to consider for given manifold
+    radial_extent = experiment_params["radial_extent"]
 
     n, m = quantum_numbers.values()
     results_path = results_path + str(n) + str(m) + "index" + str(index) + "/"
     import os
     if not os.path.exists(results_path):
         os.makedirs(results_path)
-    eigenvalues, _ = TISE_stark_effect_exact(0,0,0, electric_field, n,m)
-    delE = eigenvalues[index]
-    pde_extra_arguments = {"quantum_numbers":quantum_numbers, "electric_field":electric_field, "delE":delE}
     
-    model, geom, data, net = create_model(pde_extra_arguments, index)
+    model, geom, data, net = create_model(experiment_params, network_params)
 
 
-    # # MAIN EXPERIMENTS: decreasing learning rate
-    # model.compile("adam", lr=1.0e-3)
-    # checker = dde.callbacks.ModelCheckpoint(
-    #     results_path+"model/model.ckpt", save_better_only=True, period=1000
-    # )
-    # losshistory, train_state = model.train(50000, callbacks=[checker])
-    # with open(results_path+"model/best_step.txt", "w") as text_file:
-    #     text_file.write(str(train_state.best_step))
-    # ### ------------- ###
-    # model.compile("adam", lr=1.0e-5)
-    # with open(results_path+"model/best_step.txt") as f:
-    #     best = f.readlines()[0]
-    # model.restore(results_path + "model/model.ckpt-" + best, verbose=1)
-    # checker = dde.callbacks.ModelCheckpoint(
-    #     results_path+"model/model.ckpt", save_better_only=True, period=1000
-    # )
-    # losshistory, train_state = model.train(50000, callbacks=[checker])
-    # with open(results_path+"model/best_step.txt", "w") as text_file:
-    #     text_file.write(str(train_state.best_step))
-    # ### ------------- ###
-    # model.compile("adam", lr=1.0e-6)
-    # with open(results_path+"model/best_step.txt") as f:
-    #     best = f.readlines()[0]
-    # model.restore(results_path + "model/model.ckpt-" + best, verbose=1)
-    # checker = dde.callbacks.ModelCheckpoint(
-    #     results_path+"model/model.ckpt", save_better_only=True, period=1000
-    # )
-    # losshistory, train_state = model.train(5000, callbacks=[checker])
-    # with open(results_path+"model/best_step.txt", "w") as text_file:
-    #     text_file.write(str(train_state.best_step))
-    # ### ------------- ###
-    # model.compile("adam", lr=1.0e-7)
-    # with open(results_path+"model/best_step.txt") as f:
-    #     best = f.readlines()[0]
-    # model.restore(results_path + "model/model.ckpt-" + best, verbose=1)
-    # checker = dde.callbacks.ModelCheckpoint(
-    #     results_path+"model/model.ckpt", save_better_only=True, period=1000
-    # )
-    # losshistory, train_state = model.train(5000, callbacks=[checker])
-    # with open(results_path+"model/best_step.txt", "w") as text_file:
-    #     text_file.write(str(train_state.best_step))
+    # MAIN EXPERIMENTS: decreasing learning rate
+    assert len(network_params["lrs"]) == len(network_params["optimizers"]) and \
+        len(network_params["lrs"]) == len(network_params["epochs"]), "Incompatible network parameter lengths!"
+    for i in range(len(network_params["lrs"])):
+        lr = float(network_params["lrs"][i])
+        optimizer = network_params["optimizers"][i]
+        epoch = network_params["epochs"][i]
+        model.compile(optimizer=optimizer, lr=lr, loss_weights=network_params["loss_weights"])
+        # with open(results_path+"model/best_step.txt") as f: # TODO: add this after first loop
+        #     best = f.readlines()[0]
+        # model.restore(results_path + "model/model.ckpt-" + best, verbose=1)
+        checker = dde.callbacks.ModelCheckpoint(
+            results_path+"model/model.ckpt", save_better_only=True, period=1000
+        )
+        losshistory, train_state = model.train(epochs=epoch, callbacks=[checker])
+        with open(results_path+"model/best_step.txt", "w") as text_file:
+            text_file.write(str(train_state.best_step))
     # ---------------------------------
-    # PRIOR CONVERGENCE TEST
-    prior_data = dde.data.PDE(geom, solution_prior_20index0, bcs=[], num_domain=1500, num_boundary=600)
-    prior_save_path = results_path + "prior/model"
-    compile_train_args = {'optimizer':'adam', 'lr':1e-3, 'epochs':10000}
-    model = CustomLossModel(data, net)
-    model.learn_prior(prior_data, prior_save_path, **compile_train_args)
-    model.compile("adam", lr=1.0e-5, loss='MSE')
-    #model.compile("adam", lr=1.0e-5, loss='NormalizationLoss')
+    # # PRIOR CONVERGENCE TEST
+    # prior_data = dde.data.PDE(geom, solution_prior_20index0, bcs=[], num_domain=1500, num_boundary=600)
+    # prior_save_path = results_path + "prior/model"
+    # compile_train_args = {'optimizer':'adam', 'lr':1e-3, 'epochs':10000}
+    # model = CustomLossModel(data, net)
+    # model.learn_prior(prior_data, prior_save_path, **compile_train_args)
+    # model.compile("adam", lr=1.0e-5, loss='MSE')
+    # #model.compile("adam", lr=1.0e-5, loss='NormalizationLoss')
     # ---------------------------------
-    model.train(epochs=10000)
+    #model.train(epochs=10000) # TODO: uncomment if not using MAIN EXPERIMENTS
 
 
     # ## RESTORE BEST STEP ## TODO: uncomment when not using MAIN EXPERIMENTS
@@ -389,7 +446,7 @@ def main():
     wavefunction_pred = model.predict(input_format)
     wavefunction_pred = wavefunction_pred[:,0:1] # real part
     # normalization
-    normalization_constant = normalize_output(model=model)
+    normalization_constant = normalize_output(model=model, experiment_params=experiment_params)
     wavefunction_pred = normalization_constant * wavefunction_pred
     print("====== HERE ======")
     print(normalization_constant)
@@ -415,11 +472,21 @@ def main():
     ax3.set_ylabel('z')
     fig.colorbar(plt3,ax=ax3,fraction=0.046, pad=0.04)
     ener = eigenvalues[index] / (- 3 * e * electric_field * a0 / 2)
-    fig.suptitle('{n},{m} MANIFOLD, ENERGY: {e}'.format(n=n, m=m, e=int(ener)) + "$\Delta$E")
+    fig.suptitle('{n},{m} MANIFOLD, ENERGY: {e}'.format(n=n, m=m, e=np.rint(ener)) + "$\Delta$E")
     plt.savefig(results_path + '{n}{m}index{i}.png'.format(n=n, m=m, i=index))
 
 
 
 if __name__ == "__main__":
-    #main_initial()
-    main()
+
+    #root = "/Users/lat/Desktop/Code/pinns-experiments/schrodinger_equation/"
+    root = "./"
+    default_config_path = root + "experiment_configs/TISE_stark_effect/config_30index0.yaml"
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config_path', type=str, \
+        default=default_config_path ,help='Path to the experiment config file.')
+    args = parser.parse_args()
+    config_path = args.config_path
+
+    main(config_path)
