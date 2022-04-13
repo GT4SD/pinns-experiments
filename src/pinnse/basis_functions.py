@@ -1,13 +1,14 @@
 import re
 import numpy as np
 import tensorflow as tf
+from math import pi
 
 # TODO: CHECK THE VECTORIZATION OF BASIS FUNCTIONS AGAIN LATER
 # TODO: implement for higher dimensions (n=2,3)
 
 class FourierBasis(object):
 
-    def __init__(self, max_k, input_dimension=1, output_dimension=1, backend='tensorflow', axis="all"):
+    def __init__(self, max_k, input_dimension=1, output_dimension=1, backend='tensorflow', axis="all", rescale=True):
         super().__init__()
         '''
         dimension in [1, 2]
@@ -21,11 +22,15 @@ class FourierBasis(object):
         self.dimension = input_dimension
         self.output_dimension = output_dimension
         self.backend = backend
+        self.rescale = rescale
 
     def compute(self, input):
         if self.axis=="all":
             assert self.dimension in [1,2], "Only 1,2 dimensional Fourier Basis for all axes implemented!"
             if self.backend == "tensorflow":
+                # Rescaling step
+                if self.rescale:
+                    input = 2*pi* (input / tf.reduce_max(input))
                 ks = tf.range(1, self.max_k+1, dtype=input.dtype)
                 if self.dimension == 1:
                     output = tf.reduce_sum( tf.sin(ks * input) + tf.cos(ks * input) , axis=1)
@@ -45,6 +50,9 @@ class FourierBasis(object):
                 return 0
         else:
             if self.backend == "tensorflow":
+                # Rescaling step
+                if self.rescale:
+                    input = 2*pi* (input / tf.reduce_max(input))
                 ks = tf.range(1, self.max_k+1, dtype=input.dtype)
                 if self.dimension == 1:
                     output = tf.reduce_sum( tf.sin(ks * input) + tf.cos(ks * input) , axis=1)
@@ -138,17 +146,18 @@ class LaguerreBasis(object):
 
 def main():
     # =========================
-    # x = np.linspace(0,2*np.pi,1000)
-    # x = x.reshape(-1,1)
-    # basis = FourierBasis(max_k=10)
+    x = np.linspace(0,np.pi,1000)
+    #x = np.linspace(0,2*np.pi,1000)
+    x = x.reshape(-1,1)
+    basis = FourierBasis(max_k=10)
     # =========================
     # x = np.linspace(0,30,1000)
     # x = x.reshape(-1,1)
     # basis = LegendreBasis(max_n=30)
     # =========================
-    x = np.linspace(0,30,1000)
-    x = x.reshape(-1,1)
-    basis = LaguerreBasis(max_n=30)
+    # x = np.linspace(0,30,1000)
+    # x = x.reshape(-1,1)
+    # basis = LaguerreBasis(max_n=30)
     # =========================
     representation = basis.compute(x)
     
