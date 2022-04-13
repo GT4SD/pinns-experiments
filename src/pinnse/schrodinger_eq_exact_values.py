@@ -1,16 +1,21 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from numpy.lib.type_check import imag
 from scipy.constants import h, epsilon_0, hbar, pi, e, electron_mass, physical_constants
 a0 = physical_constants['Bohr radius'][0]
-from scipy.special import genlaguerre, lpmv
+from scipy.special import genlaguerre, lpmv, jv
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
 
-# TODO: change electron mass to reduced mass
+from pinnse.utils import *
 
-# testing purposes # TODO: we don't need to set everything to 0!, just be careful about the domain you're calculating!
+# ATOMIC UNITS
 hbar = 1
 a0 = 1
+e = 1
+electron_mass = 1
+epsilon_0 = 1 / (4*pi)
+h = hbar * 2 * pi
 
 
 def TISE_hydrogen_exact(r, theta, phi, n=1, l=0, m=0, Z=1):
@@ -25,12 +30,12 @@ def TISE_hydrogen_exact(r, theta, phi, n=1, l=0, m=0, Z=1):
     R_nl = R_prefactor * np.exp(-r*Z/(n*a0)) * (2*r*Z/(n*a0))**l * genlaguerre(n-l-1,2*l+1)(2*r*Z/(n*a0))
     
     f_prefactor = (-1)**m * np.sqrt( (2*l+1)*np.math.factorial(l-m) / (4*pi*np.math.factorial(l+m)) )
+    #f_prefactor = np.sqrt( (2*l+1)*np.math.factorial(l-m) / (4*pi*np.math.factorial(l+m)) )
     f_lm = f_prefactor * lpmv(m,l,np.cos(theta))
     f_lm = f_lm * np.sqrt(2*pi) # for normalization
 
-    g_m_real = np.cos(m*phi)
-    g_m_imaginary = np.sin(m*phi)
-    g_m_real = g_m_real / np.sqrt(2*pi) # for normalization
+    g_m_real = np.cos(m*phi) / np.sqrt(2*pi)
+    g_m_imaginary = np.sin(m*phi) / np.sqrt(2*pi)
     #g_m = np.vstack([g_m_real, g_m_imaginary])
 
     return R_nl, f_lm, g_m_real
@@ -40,7 +45,7 @@ def TISE_stark_effect_exact(r, theta, phi, electric_field, n=2, m=0):
     '''
     http://www.physics.drexel.edu/~bob/Manuscripts/stark.pdf
     - n, m is the manifold to consider (So we have non-degenerate energy values!)
-    - returns: eigenvalues, eigenvectors acted on r, theta, phi
+    - returns: eigenvalues, eigenvectors acting on r, theta, phi
     '''
     assert n>m, "n must have a greater value than m!"
     factor = - 3 * e * electric_field * a0 / 2
@@ -73,6 +78,35 @@ def TISE_stark_effect_exact(r, theta, phi, electric_field, n=2, m=0):
         eigenvectors = np.expand_dims(eigenvector, axis=0)
     return eigenvalues, eigenvectors
 
+
+def TDSE_unperturbed_exact(r, theta, phi, t, n=1, l=0, m=0, Z=1):
+    statitonarys = TISE_hydrogen_exact(r, theta, phi, n=n, l=l, m=m, Z=Z)
+    E_n = - (electron_mass * e**4) / (8 * epsilon_0**2 * h**2 * n**2)
+
+    real = statitonarys[0]*statitonarys[1]*statitonarys[2] * np.cos(E_n*t/hbar)
+    imag = - statitonarys[0]*statitonarys[1]*statitonarys[2] * np.sin(E_n*t/hbar)
+
+    return real, imag
+
+
+def TDSE_one_level_AC_exact(t, field_amplitude, omega, dipole_moment, polarizability, k_max=1000, s_max=1000, backend="numpy"):
+    assert backend in ["numpy", "tensorflow"], "Only numpy, tensorflow backends supported!"
+
+    quasi_energy = - 0.25 * polarizability * field_amplitude**2
+
+    population_amplitudes = []
+    for k in range(-k_max, k_max+1):
+        amplitude = 0
+        for s in range(-s_max, s_max+1):
+            factor1 = jv(s, polarizability*field_amplitude**2 / (8*omega)) # Bessel function
+            factor2 = jv(k+2*s, dipole_moment*field_amplitude / omega)
+            amplitude += factor1*factor2
+        amplitude *= (-1)**k
+        population_amplitudes.append(amplitude)
+
+    wf_real, wf_imaginary = floquet_theorem(t, quasi_energy, population_amplitudes, omega, k_max=k_max, backend=backend)
+
+    return wf_real, wf_imaginary
 
 
 def TISE_hydrogen_1d_exact(x, n=1):
@@ -211,7 +245,6 @@ def main():
 
     # TODO: careful with prefactors
 
-
 def test():
     # def integrand(x):
     #     out_r, out_i = TISE_hydrogen_1d_momentum_space_exact(x, n=1)[0]
@@ -264,27 +297,7 @@ def test():
     print(integral)
     print(p.shape)
 
-
-# def test():
-#     limit = 30
-#     n = 3
-#     r = np.linspace(0,limit,10000)
-#     R,f,g = TISE_hydrogen_exact(r,0,0,n,1,0)
-
-#     from scipy.integrate import simps, quad
-#     def func(x):
-#         R,f,g = TISE_hydrogen_exact(x,0,0,n,1,0)
-#         return R**2 * x**2
-#     integrand = R**2 * r**2
-#     C = simps(integrand, r)
-#     print('simps: ', C)
-#     C2 = quad(func, 0, limit)
-#     print('quad: ', C2)
-#     C3 = quad(func, 0, np.inf)
-#     print('real: ', C3)
-
-
-def main():
+def main_dc():
     # ----------------------
     rmax = 30
     n_points = 1000 # must be an even number
@@ -302,18 +315,22 @@ def main():
     eigenvalues, eigenvectors = TISE_stark_effect_exact(r, theta, phi, electric_field, n=2, m=0) 
     # ----------------------
 
-    print(eigenvalues / (- 3 * e * electric_field * a0 / 2) )
-    from matplotlib import cm
-    for i in range(len(eigenvalues)):
-        # if i != 3:
-        #     continue
-        p = eigenvectors[i]**2
-        fig = plt.figure()
-        plt.imshow(p,extent=[-rmax, rmax, -rmax, rmax], interpolation='none',origin='lower', cmap=cm.hot) 
-        plt.xlabel('x')
-        plt.ylabel('z')
-        plt.title('Probability distribution')
-        plt.show()
+    ener = eigenvalues[0] / (- 3 * e * electric_field * a0 / 2)
+    print(ener)
+    print(np.rint(ener))
+
+    # print(eigenvalues / (- 3 * e * electric_field * a0 / 2) )
+    # from matplotlib import cm
+    # for i in range(len(eigenvalues)):
+    #     if i != 0:
+    #         continue
+    #     p = eigenvectors[i]**2
+    #     fig = plt.figure()
+    #     plt.imshow(p,extent=[-rmax, rmax, -rmax, rmax], interpolation='none',origin='lower', cmap=cm.hot) 
+    #     plt.xlabel('x')
+    #     plt.ylabel('z')
+    #     plt.title('Probability distribution')
+    #     plt.show()
 
     # # Test for n=4, m=0 TODO: passed
     # a = TISE_hydrogen_exact(r, theta, phi, n=4, l=0, m=0)
@@ -341,11 +358,81 @@ def main():
     # plt.title('Probability distribution')
     # plt.show()
 
+
+def normalization():
+    radial_extent = 40 # extents: 40 for n=3, 70 for n=4, 100 for n=5, 140 for n=6
+
+    from scipy.integrate import simps
+    #rmax = 20
+    rmax = np.sqrt((radial_extent**2) / 3)
+    n_points = 100 # must be an even number
+    x = np.linspace(-rmax,rmax,n_points)
+    y = np.linspace(-rmax,rmax,n_points)
+    z = np.linspace(-rmax,rmax,n_points)
+    X, Y, Z = np.meshgrid(x, y, z)
+    r = np.sqrt(X**2 + Y**2 + Z**2)
+    theta = np.arctan(np.sqrt(X**2 + Y**2) / Z)
+    theta = np.where(theta<0,np.pi+theta,theta)
+    phi = np.where(X<0, np.arctan(Y/X), np.arctan(Y/X)+pi)
+
+    R, f, g = TISE_hydrogen_exact(r, theta, phi, n=3, l=1, m=0, Z=1)
+    gt_u = R*f*g
+    gt_v = np.zeros_like(gt_u)
+
+    #integrand = predictions_u**2 # if we assume Im(wavefunction)=0
+    integrand = gt_u**2 + gt_v**2
+    integral = simps(integrand, z)
+    integral = simps(integral, y)
+    integral = simps(integral, x)
+    normalization_costant = 1. / np.sqrt(integral)
+    print("===================")
+    print(integral)
+    print(normalization_costant)
+    print("===================")
+
+def one_level_test():
+    # result1 = TDSE_one_level_AC_exact(1, 1, 1, 1, 1, 10, 10)
+    # result2 = TDSE_one_level_AC_exact(1, 1, 1, 1, 1, 100, 100)
+    # result3 = TDSE_one_level_AC_exact(1, 1, 1, 1, 1)
+    
+    # print(result1)
+    # print(result2)
+    # print(result3)
+
+    amplitudes = TDSE_one_level_AC_exact(np.linspace(0,1,100), 1,1,1,1,100,100)
+    real, imaginary = amplitudes
+    print(real**2 + imaginary**2)
+
+def harmonic_test():
+    rmax = 50
+    n_points = 10 # must be an even number
+    x = np.linspace(-rmax,rmax,n_points)
+    y = np.linspace(-rmax,rmax,n_points)
+    z = np.linspace(-rmax,rmax,n_points)
+    X, Y, Z = np.meshgrid(x, y, z)
+    r = np.sqrt(X**2 + Y**2 + Z**2)
+    theta = np.arctan(np.sqrt(X**2 + Y**2) / Z)
+    theta = np.where(theta<0,np.pi+theta,theta)
+    phi = np.where(X<0, np.arctan(Y/X), np.arctan(Y/X)+pi)
+
+    R, f, g = TISE_hydrogen_exact(r, theta, phi, n=4, l=2, m=1)
+    from scipy.special import sph_harm
+    harm = sph_harm(1, 2, phi, theta) # careful for (-1)**m (Condon-Shortley phase)
+    harm = np.real(harm)
+    abs_error = np.abs(harm - (f*g))
+    print(np.mean(abs_error))
+    print(np.max(abs_error))
+
+
 if __name__ == "__main__":
     #main()
-    test()
+    #test()
 
+    normalization()
 
+    #one_level_test()
+
+    #harmonic_test()
 
 
 
