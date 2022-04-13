@@ -973,9 +973,10 @@ class CustomLossModel(dde.Model): # TODO: change name to sth more generic, this 
             # #self.saver = tf.train.import_meta_graph(self.prior_save_path + '-0.ckpt,meta') # saves under this name on cluster
             # pth = os.path.split(self.prior_save_path)[0]
             # self.saver.restore(self.sess,tf.train.latest_checkpoint(pth))
-
-            self.restore(self.prior_save_path+"-0", verbose=1)
-            #self.restore(self.prior_save_path+"-0.ckpt", verbose=1) # .ckpt extension for cluster
+            try:
+                self.restore(self.prior_save_path+"-0", verbose=1)
+            except:
+                self.restore(self.prior_save_path+"-0.ckpt", verbose=1) # .ckpt extension for cluster
             self.prior_learned = False
         ##############################
 
