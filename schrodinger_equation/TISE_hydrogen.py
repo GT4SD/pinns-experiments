@@ -56,7 +56,7 @@ def plot(p_gt, p_pred, rmax, results_path, quantum_numbers):
 def fourier_prior(args, f):
     x = args[:,0:1]
     y = f[:,0:1]
-    basis = FourierBasis(max_k=10)
+    basis = FourierBasis(max_k=10, rescale=False)
     representation = basis.compute(x)
     return representation - y
 
