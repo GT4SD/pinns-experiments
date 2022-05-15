@@ -15,9 +15,9 @@ network_params:
   optimizers: ["adam", "adam", "adam", "adam"]
   epochs: [50000, 50000, 5000, 5000]
   loss_weights: [1,1,1,1,1,1,10,10,1,1,1,1]
+  strict_boundary: True # loss weights and strict boundary must be compatible!
 
 
-prior_params: None
+prior_params:
 
-#results_path: "/Users/lat/Desktop/Code/pinns-experiments/schrodinger_equation/results_TISE_hydrogen_without_decomposition/"
-results_path:  "../../../../../dccstor/pinns/results/results_TISE_hydrogen_without_decomposition/"
+results_path: "Enter the path of your results folder here"
