@@ -142,29 +142,3 @@ class LaguerreBasis(object):
         elif self.backend == "numpy":
             # TODO: implement
             return 0
-
-
-def main():
-    # =========================
-    x = np.linspace(0,np.pi,1000)
-    #x = np.linspace(0,2*np.pi,1000)
-    x = x.reshape(-1,1)
-    basis = FourierBasis(max_k=10)
-    # =========================
-    # x = np.linspace(0,30,1000)
-    # x = x.reshape(-1,1)
-    # basis = LegendreBasis(max_n=30)
-    # =========================
-    # x = np.linspace(0,30,1000)
-    # x = x.reshape(-1,1)
-    # basis = LaguerreBasis(max_n=30)
-    # =========================
-    representation = basis.compute(x)
-    
-    import matplotlib.pyplot as plt
-    plt.figure(figsize=(12,8))
-    plt.plot(x, representation, '.k')
-    plt.show()
-
-if __name__ == "__main__":
-    main()
