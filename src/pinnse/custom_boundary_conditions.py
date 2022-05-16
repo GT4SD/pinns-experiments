@@ -6,8 +6,8 @@ from __future__ import print_function
 
 import numpy as np
 
-from deepxde import gradients as grad
-from deepxde.icbcs.boundary_conditions import BC
+grad = None
+BC = None
 
 
 class PeriodicBC(BC):

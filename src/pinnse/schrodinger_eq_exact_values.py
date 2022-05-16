@@ -3,8 +3,6 @@ from scipy.constants import h, epsilon_0, hbar, pi, e, electron_mass, physical_c
 
 a0 = physical_constants["Bohr radius"][0]
 from scipy.special import genlaguerre, lpmv, jv
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib import cm
 
 from .utils import *
 
