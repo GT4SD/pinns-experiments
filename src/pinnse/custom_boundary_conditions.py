@@ -4,30 +4,29 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numbers
-from abc import ABC, abstractmethod
-from functools import wraps
-
 import numpy as np
 
-from deepxde import backend as bkd
-from deepxde import config
 from deepxde import gradients as grad
-from deepxde import utils
-from deepxde.backend import backend_name
-
 from deepxde.icbcs.boundary_conditions import BC
 
 
 class PeriodicBC(BC):
     """Periodic boundary conditions on component_x."""
 
-    def __init__(self, geom, component_x, on_boundary, derivative_order=0, component=0, periodicity="symmetric"):
-        '''
+    def __init__(
+        self,
+        geom,
+        component_x,
+        on_boundary,
+        derivative_order=0,
+        component=0,
+        periodicity="symmetric",
+    ):
+        """
         periodicity:
         - symmetric for y[x] = y[-x]
         - antisymmetric for y[x] = -y[-x]
-        '''
+        """
         super(PeriodicBC, self).__init__(geom, on_boundary, component)
         self.component_x = component_x
         self.derivative_order = derivative_order
@@ -35,7 +34,10 @@ class PeriodicBC(BC):
             raise NotImplementedError(
                 "PeriodicBC only supports derivative_order 0 or 1."
             )
-        assert periodicity in ["symmetric", "antisymmetric"], "Given periodicity not understood!"
+        assert periodicity in [
+            "symmetric",
+            "antisymmetric",
+        ], "Given periodicity not understood!"
         self.periodicity = periodicity
 
     def collocation_points(self, X):
@@ -53,6 +55,6 @@ class PeriodicBC(BC):
             yleft = dydx[beg:mid]
             yright = dydx[mid:end]
         if self.periodicity == "symmetric":
-            return yleft - yright # y[x] = y[-x]
+            return yleft - yright  # y[x] = y[-x]
         elif self.periodicity == "antisymmetric":
-            return yleft + yright # y[x] = -y[-x]
+            return yleft + yright  # y[x] = -y[-x]

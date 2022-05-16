@@ -18,7 +18,3 @@ Enforce styling with `black`:
 ```console
 python -m black src
 ```
-
-## notebooks
-
-Examples and notebooks can be found [here](./notebooks).

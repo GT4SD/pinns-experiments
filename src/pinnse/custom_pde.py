@@ -5,16 +5,15 @@ from __future__ import print_function
 import numpy as np
 
 import deepxde as dde
+
 # from deepxde.data.data import Data
 from deepxde import backend as bkd
-from deepxde import config
-from deepxde.utils import get_num_args, run_if_all_none
-
+from deepxde.utils import get_num_args
 
 
 class CustomPDE(dde.data.PDE):
-
-    def __init__(self,
+    def __init__(
+        self,
         geometry,
         pde,
         bcs,
@@ -26,8 +25,10 @@ class CustomPDE(dde.data.PDE):
         solution=None,
         num_test=None,
         auxiliary_var_function=None,
-        pde_extra_arguments=None,): # pde_extra_arguments is to be given in dictionary (kwargs) format
-        super().__init__(geometry,
+        pde_extra_arguments=None,
+    ):  # pde_extra_arguments is to be given in dictionary (kwargs) format
+        super().__init__(
+            geometry,
             pde,
             bcs,
             num_domain,
@@ -37,7 +38,8 @@ class CustomPDE(dde.data.PDE):
             exclusions,
             solution,
             num_test,
-            auxiliary_var_function,)
+            auxiliary_var_function,
+        )
         self.pde_extra_arguments = pde_extra_arguments
 
     def losses(self, targets, outputs, loss, model):
@@ -100,7 +102,7 @@ class CustomTimePDE(CustomPDE):
         solution=None,
         num_test=None,
         auxiliary_var_function=None,
-        pde_extra_arguments=None, # pde_extra_arguments is to be given in dictionary (kwargs) format
+        pde_extra_arguments=None,  # pde_extra_arguments is to be given in dictionary (kwargs) format
     ):
         self.num_initial = num_initial
         super(CustomTimePDE, self).__init__(

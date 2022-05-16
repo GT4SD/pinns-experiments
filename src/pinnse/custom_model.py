@@ -10,7 +10,6 @@ __all__ = ["Model", "TrainState", "LossHistory"]
 import pickle
 from collections import OrderedDict
 
-import os
 import numpy as np
 
 import deepxde as dde
@@ -284,18 +283,18 @@ class Model(object):
 
     def _outputs_losses(self, training, inputs, targets, auxiliary_vars):
         if backend_name == "tensorflow.compat.v1":
-            print('These are the values : ')
+            print("These are the values : ")
             print(inputs.shape)
-            #print(inputs[:,0])
-            #print(inputs[:,1])
-            a = np.unique(inputs[:,0])
-            b = np.unique(inputs[:,1])
+            # print(inputs[:,0])
+            # print(inputs[:,1])
+            a = np.unique(inputs[:, 0])
+            b = np.unique(inputs[:, 1])
             uniques = np.unique(inputs, axis=0)
             print(uniques.shape)
-            #print(uniques)
+            # print(uniques)
             print(a.shape)
             print(b.shape)
-            print('--------')
+            print("--------")
             feed_dict = self.net.feed_dict(training, inputs, targets, auxiliary_vars)
             return self.sess.run(self.outputs_losses, feed_dict=feed_dict)
         if backend_name == "tensorflow":
@@ -367,7 +366,7 @@ class Model(object):
         print("Training model...\n")
         self.stop_training = False
         self.train_state.set_data_train(*self.data.train_next_batch(self.batch_size))
-        print('There we go: ', self.train_state.X_train.shape)
+        print("There we go: ", self.train_state.X_train.shape)
         print(self.train_state.X_train)
         self.train_state.set_data_test(*self.data.test())
         self._test()
@@ -655,23 +654,24 @@ class Model(object):
             print(v)
 
 
-class CustomLossModel(dde.Model): # TODO: change name to sth more generic, this is our custom model now!
-
+class CustomLossModel(
+    dde.Model
+):  # TODO: change name to sth more generic, this is our custom model now!
     def __init__(self, data, net):
         super().__init__(data, net)
         self.prior_learned = False
-    
+
     # same as parent apart from the defined loss
     @utils.timing
     def compile(
         self,
         optimizer,
         lr=None,
-        loss="WeightedLoss", # "NormalizationLoss" # Only addition is the additional losses!
-        weight_condition=None, # new addition, only works if loss='WeightedLoss'
+        loss="WeightedLoss",  # "NormalizationLoss" # Only addition is the additional losses!
+        weight_condition=None,  # new addition, only works if loss='WeightedLoss'
         metrics=None,
         decay=None,
-        loss_weights=None, # not same as our weights, we weight individual points, this is used for different type of losses
+        loss_weights=None,  # not same as our weights, we weight individual points, this is used for different type of losses
         external_trainable_variables=None,
     ):
         """Configures the model for training.
@@ -750,8 +750,12 @@ class CustomLossModel(dde.Model): # TODO: change name to sth more generic, this 
             loss_fn.set_weights(self.net.inputs)
         elif self.loss == "NormalizationLoss":
             # TODO: change this to a general setup!
-            loss_fn.set_variables(self.net.outputs[:,0:1], domain_area=4*pi*(30**3)/3,\
-                 n_points_domain=self.data.num_domain, n_points_boundary=self.data.num_boundary)
+            loss_fn.set_variables(
+                self.net.outputs[:, 0:1],
+                domain_area=4 * pi * (30**3) / 3,
+                n_points_domain=self.data.num_domain,
+                n_points_boundary=self.data.num_boundary,
+            )
 
         # Data losses
         losses = self.data.losses(self.net.targets, self.net.outputs, loss_fn, self)
@@ -900,19 +904,19 @@ class CustomLossModel(dde.Model): # TODO: change name to sth more generic, this 
         self.train_step = train_step
 
     def learn_prior(self, prior_data, prior_save_path, **compile_train_args):
-        '''
+        """
         prior_data: should have the same structure as self.data with PDE as only difference:
         Define PDE as the prior you want to set!
-        '''
+        """
         data = self.data
         self.data = prior_data
         self.prior_save_path = prior_save_path
 
-        optimizer, lr = compile_train_args['optimizer'], compile_train_args['lr']
-        epochs = compile_train_args['epochs']
+        optimizer, lr = compile_train_args["optimizer"], compile_train_args["lr"]
+        epochs = compile_train_args["epochs"]
 
         print("Learning prior function...")
-        self.compile(optimizer, lr, loss='MSE')
+        self.compile(optimizer, lr, loss="MSE")
         self.train(epochs)
         print("Prior function learned!")
         self.prior_learned = True
@@ -932,7 +936,7 @@ class CustomLossModel(dde.Model): # TODO: change name to sth more generic, this 
         callbacks=None,
         model_restore_path=None,
         model_save_path=None,
-        reduce_lr=None, # in order to manually reduce lr
+        reduce_lr=None,  # in order to manually reduce lr
     ):
         """Trains the model for a fixed number of epochs (iterations on a dataset).
 
@@ -974,9 +978,11 @@ class CustomLossModel(dde.Model): # TODO: change name to sth more generic, this 
             # pth = os.path.split(self.prior_save_path)[0]
             # self.saver.restore(self.sess,tf.train.latest_checkpoint(pth))
             try:
-                self.restore(self.prior_save_path+"-0", verbose=1)
+                self.restore(self.prior_save_path + "-0", verbose=1)
             except:
-                self.restore(self.prior_save_path+"-0.ckpt", verbose=1) # .ckpt extension for cluster
+                self.restore(
+                    self.prior_save_path + "-0.ckpt", verbose=1
+                )  # .ckpt extension for cluster
             self.prior_learned = False
         ##############################
 
