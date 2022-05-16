@@ -1,6 +1,6 @@
 import tensorflow as tf
 import deepxde.backend as bkd
-from pinnse.integrate import integrate_1d
+# from pinnse.integrate import integrate_1d
 
 # class RadiusBasedLoss:
 
