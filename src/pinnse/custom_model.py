@@ -12,16 +12,16 @@ from collections import OrderedDict
 
 import numpy as np
 
-dde = None
-config = None
-display = None
-grad = None
-losses_module = None
-metrics_module = None
-optimizers = None
-utils = None
-backend_name, tf, torch = None
-CallbackList = None
+import deepxde as dde
+from deepxde import config
+from deepxde import display
+from deepxde import gradients as grad
+from deepxde import losses as losses_module
+from deepxde import metrics as metrics_module
+from deepxde import optimizers
+from deepxde import utils
+from deepxde.backend import backend_name, tf, torch
+from deepxde.callbacks import CallbackList
 
 from pinnse.custom_loss import WeightedLoss, NormalizationLoss
 
