@@ -4,9 +4,9 @@ from __future__ import print_function
 
 import numpy as np
 
-dde = None
-bkd = None
-get_num_args = None
+import deepxde as dde
+from deepxde import backend as bkd
+from deepxde.utils import get_num_args
 
 
 class CustomPDE(dde.data.PDE):

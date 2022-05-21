@@ -1,4 +1,4 @@
-bkd = None
+import deepxde.backend as bkd
 
 
 class WeightedLoss:

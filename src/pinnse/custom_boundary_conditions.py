@@ -6,9 +6,8 @@ from __future__ import print_function
 
 import numpy as np
 
-grad = None
-BC = None
-
+from deepxde import gradients as grad
+from deepxde.icbcs.boundary_conditions import BC
 
 class PeriodicBC(BC):
     """Periodic boundary conditions on component_x."""

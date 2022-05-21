@@ -1,7 +1,7 @@
 import sys
 import yaml
 
-dde = None
+import deepxde as dde
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
