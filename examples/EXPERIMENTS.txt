@@ -1,0 +1,6 @@
+GENERAL SETUP FOR EXPERIMENT SCRIPTS:
+
+- Experiment Scripts should contain the following functions for the compatibility with evaluation/plotting scripts:
+
+    - create_model: given no input, should create the exact experimental tf graph along with geom, data, net objects
+    - normalize_output: given model object, should compute the normalization constant considering the predicted model outputs
