@@ -2,6 +2,12 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+<!-- ![My Image](./figures/plots_orbitals.png) -->
+<img align="center" src="./figures/PINN.png" width="40%" height="40%">
+&#8594;
+<!-- <img align="center" src="./figures/plots_orbitals.png" width="25%" height="25%"> -->
+<img align="center" src="./figures/plots_orbitals1.png" width="30%" height="30%">
+
 Using physics-informed neural networks (**PINNs**) for solving atomic time-dependent Schrödinger equation (**TDSE**) in perturbative regime. Various experiments are available within the project framework:
 * Hydrogen orbitals (solving unperturbed atomic time-independent Schrödinger equation (**TISE**))
 * Hydrogen atom in a DC Stark setting
